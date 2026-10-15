@@ -106,6 +106,15 @@ h3{font-family:"Black Han Sans",sans-serif;font-size:32px;font-weight:400}
 #attL,#attR{background:var(--hd)}
 #dressL,#dressR{background:var(--va)}
 #dressPanel{margin-top:28px}
+/* 하단 옷입히기 패널(가로형) */
+.c img{position:absolute;inset:0}
+.dpanel{background:#D8DFE9;border-radius:28px;padding:18px}
+.dpanel .parts{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))}
+#btnChar,#btnLoad{background:var(--hd)}
+#btnReg,#btnReset,#btnSave{background:var(--va)}
+#layerList{display:flex;flex-wrap:wrap;gap:8px}
+#layerList .layer{margin-top:6px}
+#layerList .empty{grid-column:auto}
 </style>
 </head>
 <body>
@@ -131,19 +140,12 @@ h3{font-family:"Black Han Sans",sans-serif;font-size:32px;font-weight:400}
   <div class="row center"><button id="btnAddPair">페어룩북 추가하기</button></div>
 <div id="dressPanel" style="display:none">
   <div class="pl"><button data-pl="1" class="on">1P 캐릭터</button><button data-pl="2">2P 캐릭터</button></div>
-  <div class="wrap">
-    <div class="left">
-      <div class="stage" id="stage"></div>
-      <div class="row">
-        <button id="btnChar">이미지 첨부/교체</button><button id="btnLoad">불러오기</button><button id="btnDl">이미지 저장</button>
-      </div>
-    </div>
-    <div class="right">
-      <div class="cats" id="cats"></div>
-      <div class="parts" id="parts"></div>
-      <div class="layers"><b>레이어 순서</b> <small>(위로 갈수록 앞)</small><div id="layerList"></div></div>
-      <div class="row" style="justify-content:flex-end"><button id="btnReg">등록</button><button id="btnReset">초기화</button><button id="btnSave">저장</button></div>
-    </div>
+  <div class="dpanel">
+    <div class="row" style="margin:0 0 12px"><button id="btnChar">이미지 첨부/교체</button><button id="btnLoad">불러오기</button></div>
+    <div class="cats" id="cats"></div>
+    <div class="parts" id="parts"></div>
+    <div class="layers"><b>레이어 순서</b> <small>(위로 갈수록 앞)</small><div id="layerList"></div></div>
+    <div class="row" style="justify-content:flex-end"><button id="btnReg">등록</button><button id="btnReset">초기화</button><button id="btnSave">저장</button></div>
   </div>
 </div>
 </section>
@@ -228,24 +230,25 @@ function pickSaved(cb,upl){
 }
 
 /* 메인 */
+function layersHTML(k){const p=D.pl[k];return p.char?`<img src="${p.char}">`+p.order.filter(c=>p.worn[c]).map(c=>`<img src="${p.worn[c]}">`).join(""):""}
 function renderMain(){
   [[1,"#mL","sh1"],[2,"#mR","sh2"]].forEach(([k,el,sh])=>{
-    $(el).innerHTML=D.main[k]?`<img src="${D.main[k]}">`:`<div class="ph">${k}P</div>`;
-    document.querySelector("."+sh).style.display=D.main[k]?"block":"none";
+    $(el).innerHTML=D.pl[k].char?layersHTML(k):`<div class="ph">${k}P</div>`;
+    document.querySelector("."+sh).style.display=D.pl[k].char?"block":"none";
   });
 }
-$("#attL").onclick=()=>pickSaved(s=>{D.main[1]=s;renderMain();persist()},true);
-$("#attR").onclick=()=>pickSaved(s=>{D.main[2]=s;renderMain();persist()},true);
+$("#attL").onclick=()=>pickSaved(s=>{const p=D.pl[1];p.char=s;p.worn={};render();persist()},true);
+$("#attR").onclick=()=>pickSaved(s=>{const p=D.pl[2];p.char=s;p.worn={};render();persist()},true);
 $("#nm1").oninput=e=>{D.names[1]=e.target.value;persist()};
 $("#nm2").oninput=e=>{D.names[2]=e.target.value;persist()};
 $("#pairName").oninput=e=>{D.pairName=e.target.value;persist()};
 
 async function pairImg(){
-  if(!D.main[1]&&!D.main[2])return null;
+  const S=[await compose(1),await compose(2)];if(!S[0]&&!S[1])return null;
   try{await document.fonts.load("32px 'Black Han Sans'")}catch(e){}
   const cv=document.createElement("canvas");cv.width=1050;cv.height=690;const x=cv.getContext("2d");
   x.fillStyle="#fff";x.fillRect(0,0,1050,690);
-  const L=[[D.main[1],0],[D.main[2],450]].filter(a=>a[0]);
+  const L=[[S[0],0],[S[1],450]].filter(a=>a[0]);
   x.fillStyle="rgba(0,0,0,.2)";
   L.forEach(([,o])=>{x.beginPath();x.ellipse(o+300,552,136,12,0,0,7);x.fill()});
   for(const [s,o] of L)x.drawImage(await loadImg(s),o,0,600,600);
@@ -273,13 +276,7 @@ function renderBook(){
 document.querySelectorAll("[data-pl]").forEach(b=>b.onclick=()=>{
   ui.cur=+b.dataset.pl;document.querySelectorAll("[data-pl]").forEach(x=>x.classList.toggle("on",x===b));render();
 });
-function render(){renderStage();renderCats();renderParts();renderLayers()}
-function renderStage(){
-  const p=D.pl[ui.cur],st=$("#stage");
-  st.innerHTML=p.char?"":'<div class="ph">캐릭터 이미지를 첨부해 주세요</div>';
-  if(p.char)st.insertAdjacentHTML("beforeend",`<img src="${p.char}">`);
-  p.order.forEach(c=>{if(p.worn[c])st.insertAdjacentHTML("beforeend",`<img src="${p.worn[c]}">`)});
-}
+function render(){renderMain();renderCats();renderParts();renderLayers()}
 function renderCats(){
   $("#cats").innerHTML=CATS.map(c=>`<button class="${c===ui.cat?"on":""}" data-c="${c}">${c}</button>`).join("");
   document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{ui.cat=b.dataset.c;renderCats();renderParts()});
@@ -306,19 +303,15 @@ $("#btnChar").onclick=()=>pickFile(false,a=>{D.pl[ui.cur].char=a[0];render();per
 $("#btnLoad").onclick=()=>pickSaved(s=>{const p=D.pl[ui.cur];p.char=s;p.worn={};render();persist()});
 $("#btnReg").onclick=()=>pickFile(true,a=>{D.parts[ui.cat].push(...a);renderParts();persist()});
 $("#btnReset").onclick=()=>{D.pl[ui.cur].worn={};render();persist()};
-async function compose(){
-  const p=D.pl[ui.cur];if(!p.char)return null;
+async function compose(k=ui.cur){
+  const p=D.pl[k];if(!p.char)return null;
   const cv=document.createElement("canvas");cv.width=cv.height=600;const x=cv.getContext("2d");
   for(const s of [p.char,...p.order.filter(c=>p.worn[c]).map(c=>p.worn[c])])x.drawImage(await loadImg(s),0,0,600,600);
   return cv.toDataURL("image/png");
 }
-$("#btnDl").onclick=async()=>{
-  const d=await compose();if(!d)return toast("캐릭터 이미지를 먼저 첨부해 주세요");
-  const a=document.createElement("a");a.href=d;a.download=`character_${ui.cur}P.png`;a.click();
-};
 $("#btnSave").onclick=async()=>{
   const d=await compose();if(!d)return toast("캐릭터 이미지를 먼저 첨부해 주세요");
-  D.saved.push({id:++D.uid,player:ui.cur,src:d});D.main[ui.cur]=d;renderMain();persist();
+  D.saved.push({id:++D.uid,player:ui.cur,src:d});persist();
   toast(`${ui.cur}P 캐릭터를 저장했어요`);
 };
 
@@ -331,6 +324,7 @@ function openDress(k){
 }
 $("#dressL").onclick=()=>openDress(1);$("#dressR").onclick=()=>openDress(2);
 function refreshAll(){
+  [1,2].forEach(k=>{if(!D.pl[k].char&&D.main[k]){D.pl[k].char=D.main[k];D.main[k]=null}});
   CATS.forEach(c=>{D.parts[c]=D.parts[c]||[];[1,2].forEach(k=>{if(!D.pl[k].order.includes(c))D.pl[k].order.push(c)})});
   renderAcct();render();renderMain();renderBook();
   $("#nm1").value=D.names[1];$("#nm2").value=D.names[2];$("#pairName").value=D.pairName;
