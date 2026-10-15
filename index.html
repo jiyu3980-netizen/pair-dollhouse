@@ -130,6 +130,11 @@ h3{font-family:"Black Han Sans",sans-serif;font-size:32px;font-weight:400}
 #tabBook,#tabMain{width:44px;height:44px;padding:0;border-radius:50%}
 #tabBook img,#tabMain img{width:20px;height:20px}
 .part{background-color:#F4F5F8;background-repeat:no-repeat;background-position:center;background-size:contain}
+/* 방향키 */
+#dpad{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:5;display:none;background:#fff;border-radius:24px;padding:10px;box-shadow:0 4px 18px rgba(0,0,0,.18);grid-template-columns:repeat(3,40px);gap:6px;justify-items:center}
+#dpad .t{grid-column:1/-1;font-size:11px;font-weight:500;text-align:center;white-space:nowrap}
+#dpad button{width:40px;height:40px;padding:0;border-radius:50%;font-size:17px;background:var(--va);touch-action:manipulation}
+#dprs{background:var(--hd)!important}
 </style>
 </head>
 <body>
@@ -173,14 +178,15 @@ h3{font-family:"Black Han Sans",sans-serif;font-size:32px;font-weight:400}
 </section>
 </main>
 
+<div id="dpad"><div class="t" id="dpt"></div><span></span><button data-m="0,-1" aria-label="위로">↑</button><span></span><button data-m="-1,0" aria-label="왼쪽으로">←</button><button id="dprs" aria-label="위치 초기화" title="위치 초기화">⟲</button><button data-m="1,0" aria-label="오른쪽으로">→</button><span></span><button data-m="0,1" aria-label="아래로">↓</button><span></span></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script>
-const CATS=["앞머리","뒷머리","상의","하의","아우터(앞)","아우터(뒤)","일체형","신발","악세사리"];
-const LAYER=["상의","하의","아우터(앞)","아우터(뒤)","일체형","신발","악세사리","앞머리","뒷머리"];
-const MIG={"아우터":"아우터(앞)","헤어스타일":"앞머리"},BACK=new Set(["뒷머리","아우터(뒤)"]);
+const CATS=["앞머리","뒷머리","상의","하의","아우터(앞)","아우터(뒤)","일체형","신발","악세사리1","악세사리2","악세사리3"];
+const LAYER=["상의","하의","아우터(앞)","아우터(뒤)","일체형","신발","악세사리1","악세사리2","악세사리3","앞머리","뒷머리"];
+const MIG={"아우터":"아우터(앞)","헤어스타일":"앞머리","악세사리":"악세사리1"},BACK=new Set(["뒷머리","아우터(뒤)"]);
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const mk=()=>({char:null,worn:{},order:[...LAYER]});
+const mk=()=>({char:null,worn:{},off:{},order:[...LAYER]});
 const blank=()=>({parts:Object.fromEntries(CATS.map(c=>[c,[]])),pl:{1:mk(),2:mk()},saved:[],pairs:[],codes:{},main:{1:null,2:null},names:{1:"",2:""},pairName:"",uid:0});
 let D=blank(),user=null,ui={cur:1,cat:CATS[0]};
 
@@ -202,7 +208,7 @@ function modal(title,html){const o=document.createElement("div");o.className="ov
 const readFile=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f)});
 const loadImg=s=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=s});
 function pickFile(multi,cb){const i=document.createElement("input");i.type="file";i.accept="image/*";i.multiple=multi;i.onchange=async()=>{const a=[];for(const f of i.files)a.push(await readFile(f));if(a.length)cb(a)};i.click()}
-function go(p){$("#tabMain").style.display=p==="main"?"none":"";$("#tabBook").style.display=p==="book"?"none":"";document.querySelectorAll(".page").forEach(x=>x.classList.toggle("on",x.id===p));if(p==="book")renderBook();if(p==="main")renderMain();scrollTo(0,0)}
+function go(p){$("#tabMain").style.display=p==="main"?"none":"";$("#tabBook").style.display=p==="book"?"none":"";document.querySelectorAll(".page").forEach(x=>x.classList.toggle("on",x.id===p));if(p==="book")renderBook();if(p==="main")renderMain();$("#dpad").style.display=(p==="main"&&$("#dressPanel").style.display!=="none")?"grid":"none";scrollTo(0,0)}
 document.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>go(b.dataset.p));
 
 /* 계정 */
@@ -252,8 +258,10 @@ function pickSaved(cb,upl){
 }
 
 /* 메인 */
-function seq(k){const p=D.pl[k];if(!p.char)return[];const w=p.order.filter(c=>p.worn[c]);return[...w.filter(c=>BACK.has(c)).map(c=>p.worn[c]),p.char,...w.filter(c=>!BACK.has(c)).map(c=>p.worn[c])]}
-function layersHTML(k){return seq(k).map(s=>`<img src="${s}">`).join("")}
+function seq(k){const p=D.pl[k];if(!p.char)return[];const w=p.order.filter(c=>p.worn[c]);
+  const L=c=>{const o=(p.off||{})[c]||{};return{s:p.worn[c],x:o.x||0,y:o.y||0}};
+  return[...w.filter(c=>BACK.has(c)).map(L),{s:p.char,x:0,y:0},...w.filter(c=>!BACK.has(c)).map(L)]}
+function layersHTML(k){return seq(k).map(l=>`<img src="${l.s}"${l.x||l.y?` style="transform:translate(${l.x/6}%,${l.y/6}%)"`:""}>`).join("")}
 function renderMain(){
   [[1,"#mL","sh1"],[2,"#mR","sh2"]].forEach(([k,el,sh])=>{
     $(el).innerHTML=D.pl[k].char?layersHTML(k):`<div class="ph">${k}P</div>`;
@@ -299,10 +307,10 @@ function renderBook(){
 document.querySelectorAll("[data-pl]").forEach(b=>b.onclick=()=>{
   ui.cur=+b.dataset.pl;document.querySelectorAll("[data-pl]").forEach(x=>x.classList.toggle("on",x===b));render();
 });
-function render(){renderMain();renderCats();renderParts();renderLayers()}
+function render(){renderMain();updDpad();renderCats();renderParts();renderLayers()}
 function renderCats(){
   $("#cats").innerHTML=CATS.map(c=>`<button class="${c===ui.cat?"on":""}" data-c="${c}">${c}</button>`).join("");
-  document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{ui.cat=b.dataset.c;renderCats();renderParts()});
+  document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{ui.cat=b.dataset.c;renderCats();renderParts();updDpad()});
 }
 function renderParts(){
   const p=D.pl[ui.cur],list=D.parts[ui.cat];
@@ -312,6 +320,7 @@ function renderParts(){
     if(!p.char)return toast("먼저 캐릭터 이미지를 첨부해 주세요");
     const s=list[+el.dataset.i];
     if(p.worn[ui.cat]===s)delete p.worn[ui.cat];else p.worn[ui.cat]=s;
+    delete p.off[ui.cat];
     render();persist();
   });
 }
@@ -326,13 +335,13 @@ function renderLayers(){
   document.querySelectorAll("[data-dn]").forEach(b=>b.onclick=()=>move(b.dataset.dn,-1));
 }
 $("#btnChar").onclick=()=>pickFile(false,a=>setChar(ui.cur,a[0]));
-$("#btnLoad").onclick=()=>pickSaved(s=>{const p=D.pl[ui.cur];p.char=s;p.worn={};render();persist()});
+$("#btnLoad").onclick=()=>pickSaved(s=>{const p=D.pl[ui.cur];p.char=s;p.worn={};p.off={};render();persist()});
 $("#btnReg").onclick=()=>pickFile(true,a=>{D.parts[ui.cat].push(...a);renderParts();persist()});
-$("#btnReset").onclick=()=>{D.pl[ui.cur].worn={};render();persist()};
+$("#btnReset").onclick=()=>{D.pl[ui.cur].worn={};D.pl[ui.cur].off={};render();persist()};
 async function compose(k=ui.cur){
   const p=D.pl[k];if(!p.char)return null;
   const cv=document.createElement("canvas");cv.width=cv.height=600;const x=cv.getContext("2d");
-  for(const s of seq(k))x.drawImage(await loadImg(s),0,0,600,600);
+  for(const l of seq(k))x.drawImage(await loadImg(l.s),l.x,l.y,600,600);
   return cv.toDataURL("image/png");
 }
 $("#btnSave").onclick=async()=>{
@@ -370,7 +379,7 @@ function showCode(code,what){
 async function shareCode(cat,i){const c=await makeCode(cat,D.parts[cat][i],cat+":"+i);if(c)showCode(c,`이 의상(${cat})`)}
 async function shareChar(s){const c=await makeCode("캐릭터",s.src,"char:"+s.id);if(c)showCode(c,"이 캐릭터")}
 function setChar(k,src){
-  const p=D.pl[k];p.char=src;p.worn={};
+  const p=D.pl[k];p.char=src;p.worn={};p.off={};
   if(!D.saved.some(s=>s.src===src))D.saved.push({id:++D.uid,player:null,src});
   render();persist();
 }
@@ -404,6 +413,7 @@ function redeemModal(onDone){
 }
 $("#btnRegCode").onclick=()=>redeemModal();
 function migrate(){
+  [1,2].forEach(k=>{D.pl[k].off=D.pl[k].off||{}});
   Object.entries(MIG).forEach(([o,n])=>{
     if(D.parts[o]){
       const had=(D.parts[n]||[]).length;
@@ -413,10 +423,23 @@ function migrate(){
     [1,2].forEach(k=>{const p=D.pl[k];if(p.worn[o]){if(!p.worn[n])p.worn[n]=p.worn[o];delete p.worn[o]}p.order=p.order.map(c=>c===o?n:c)});
   });
 }
+function updDpad(){const p=D.pl[ui.cur];$("#dpt").textContent=`${ui.cur}P · ${ui.cat}${p.worn[ui.cat]?"":" (의상 없음)"}`}
+function nudge(dx,dy){
+  const p=D.pl[ui.cur];if(!p.worn[ui.cat]){toast("조정할 의상을 먼저 입혀 주세요");return false}
+  const o=p.off[ui.cat]||(p.off[ui.cat]={x:0,y:0}),cl=v=>Math.max(-300,Math.min(300,v));
+  o.x=cl(o.x+dx*3);o.y=cl(o.y+dy*3);renderMain();persist();return true;
+}
+document.querySelectorAll("#dpad [data-m]").forEach(b=>{
+  const[dx,dy]=b.dataset.m.split(",").map(Number);let t,iv;
+  const stop=()=>{clearTimeout(t);clearInterval(iv)};
+  b.onpointerdown=e=>{e.preventDefault();if(!nudge(dx,dy))return;t=setTimeout(()=>{iv=setInterval(()=>nudge(dx,dy),60)},350)};
+  ["pointerup","pointerleave","pointercancel"].forEach(ev=>b["on"+ev]=stop);
+});
+$("#dprs").onclick=()=>{const p=D.pl[ui.cur];if(p.off[ui.cat]){delete p.off[ui.cat];renderMain();persist()}};
 function openDress(k){
   const p=$("#dressPanel");
-  if(p.style.display!=="none"&&ui.cur===k){p.style.display="none";return}
-  p.style.display="block";ui.cur=k;
+  if(p.style.display!=="none"&&ui.cur===k){p.style.display="none";$("#dpad").style.display="none";return}
+  p.style.display="block";$("#dpad").style.display="grid";ui.cur=k;
   document.querySelectorAll("[data-pl]").forEach(x=>x.classList.toggle("on",+x.dataset.pl===k));
   render();p.scrollIntoView({behavior:"smooth",block:"start"});
 }
