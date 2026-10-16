@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>페어 옷입히기</title>
+<title>길동: 커서 하는 인형놀이가 재밌다.</title>
 <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@300;400;500;700&family=Noto+Sans+KR:wght@300;400;500;700&family=Black+Han+Sans&display=swap" rel="stylesheet">
 <style>
 :root{color-scheme:light;--ink:#212121;--ab:#D8DFE9;--hd:#CFDECA;--va:#EFF0A3;--line:#d9d9d9;--chip:#f2f2f2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1072,6 +1072,7 @@ $("#hsvg").onpointerdown=e=>{
 $("#htb").onclick=e=>{const b=e.target.closest("[data-act]");if(b&&b.dataset.act!=="move")act(b.dataset.act)};
 $("#htb").onpointerdown=e=>{const b=e.target.closest("[data-act]");if(b&&b.dataset.act==="move"){e.preventDefault();startMove(pt(e))}};
 $("#undoBtn").onclick=undo;
+window.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="z"&&$("#house").classList.contains("on")&&!/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||"")&&!document.querySelector(".ov")){e.preventDefault();undo()}});
 $("#clrBtn").onclick=()=>{if(!IT().length)return toast("이미 빈 캔버스예요");D.house.work=[];hsel=new Set();commit();toast("캔버스를 비웠어요. 되돌리기로 복구할 수 있어요")};
 $("#eyeBtn").onclick=()=>{D.house.grid=D.house.grid===false;commit()};
 /* 툴킷 */
