@@ -900,10 +900,13 @@ let hsel=new Set(),hdrag=null,tsel=null,lastTap={};
 const selItems=()=>IT().filter(i=>hsel.has(i.id));
 const bbox=a=>{const x=Math.min(...a.map(i=>i.x)),y=Math.min(...a.map(i=>i.y));return{x,y,w:Math.max(...a.map(i=>i.x+i.w))-x,h:Math.max(...a.map(i=>i.y+i.h))-y}};
 function pick(it,add){(it.g?IT().filter(i=>i.g===it.g):[it]).forEach(i=>add?hsel.add(i.id):hsel.delete(i.id))}
+const FK=new Set(FURN.map(f=>f.k));
+const tint=(c,t=.6)=>{const m=/^#([0-9a-f]{6})$/i.exec(c||"");if(!m)return c;const n=parseInt(m[1],16),mx=v=>Math.round(v+(255-v)*t).toString(16).padStart(2,"0");return"#"+mx(n>>16)+mx((n>>8)&255)+mx(n&255)};
 function itemG(it){
   const f=it.fill||DEFF[it.kind]||"#d9cfcf",r=it.rot||0,sw=r===90||r===270,lw=sw?it.h:it.w,lh=sw?it.w:it.h;let inner;
   if(it.kind==="img"){const fu=D.house.furn.find(x=>x.id===it.fid);inner=fu?`<image href="${fu.img}" width="${lw}" height="${lh}" preserveAspectRatio="none" filter="url(#ol)"/>`:`<rect width="${lw}" height="${lh}" fill="#eee" stroke="#bbb" stroke-dasharray="4"/>`}
-  else inner=DR[it.kind](lw,lh,f,it);
+  else{inner=DR[it.kind](lw,lh,f,it);
+    if(FK.has(it.kind)){const sc=it.sub||(it.fill?tint(it.fill):null);if(sc&&sc.toLowerCase()!=="#ffffff"&&sc.toLowerCase()!=="#fff")inner=inner.replace(/fill="#fff"/g,'fill="'+sc+'"')}}
   if(it.fx)inner=`<g transform="translate(${lw} 0) scale(-1 1)">${inner}</g>`;
   if(it.fy)inner=`<g transform="translate(0 ${lh}) scale(1 -1)">${inner}</g>`;
   if(r===90)inner=`<g transform="translate(${it.w} 0) rotate(90)">${inner}</g>`;
@@ -1044,11 +1047,25 @@ function act(a){
 function colorModal(){
   const s=selItems().filter(i=>!LINEK.has(i.kind)&&i.kind!=="img");
   if(!s.length)return toast("색을 바꿀 수 있는 개체를 선택해 주세요 (선·이미지 제외)");
-  const m=modal("색상 선택",`<div class="row"><input type="color" id="hc" value="${s[0].fill||DEFF[s[0].kind]||"#d9cfcf"}" style="width:64px;height:40px;padding:2px;border-radius:12px"><div class="flat"><button id="hok">적용</button></div></div><b style="font-size:14px">히스토리</b><div class="sw" id="hh"></div>`);
-  const apply=c=>{s.forEach(i=>i.fill=c);D.house.hist=[c,...D.house.hist.filter(x=>x!==c)].slice(0,24);m.remove();commit()};
+  const fs=s.filter(i=>FK.has(i.kind)),hasSub=fs.length>0,a=s[0],mainC=a.fill||DEFF[a.kind]||"#d9cfcf",auto0=!fs.some(i=>i.sub),subC=(fs[0]&&fs[0].sub)||tint(mainC);
+  const inp='style="width:64px;height:40px;padding:2px;border-radius:12px"';
+  const m=modal("색상 선택",`<div class="row"><b style="font-size:14px;min-width:64px">메인 컬러</b><input type="color" id="hc" value="${mainC}" ${inp}></div>`+(hasSub?`<div class="row"><b style="font-size:14px;min-width:64px">서브 컬러</b><input type="color" id="hs" value="${subC}" ${inp}><label style="font-size:13px;display:flex;gap:6px;align-items:center;white-space:nowrap"><input type="checkbox" style="width:18px;height:18px;flex:none" id="ha"${auto0?" checked":""}>자동</label></div><div style="font-size:12px;color:#6b6475">흰색이던 부분이에요. 자동이면 메인 컬러와 가까운 연한 색으로 칠해져요.</div>`:"")+`<div class="flat"><button id="hok">적용</button></div><b style="font-size:14px">히스토리 <span style="font-weight:400;font-size:12px" id="hn"></span></b><div class="sw" id="hh"></div>`);
+  let tgt="main",mch=false;
+  const hc=m.querySelector("#hc"),hs=m.querySelector("#hs"),ha=m.querySelector("#ha"),hn=m.querySelector("#hn");
+  const lab=()=>{if(hn)hn.textContent=hasSub?"· 누르면 "+(tgt==="main"?"메인":"서브")+" 컬러에 들어가요":""};lab();
+  hc.oninput=()=>{mch=true;tgt="main";lab()};hc.onfocus=()=>{tgt="main";lab()};
+  if(hs){hs.oninput=()=>{ha.checked=false;tgt="sub";lab()};hs.onfocus=()=>{tgt="sub";lab()};ha.onchange=()=>{if(ha.checked)hs.value=tint(hc.value)}}
+  const hist=c=>{D.house.hist=[c,...D.house.hist.filter(x=>x!==c)].slice(0,24)};
+  const done=()=>{
+    const c=hc.value;
+    if(mch||!hasSub){s.forEach(i=>i.fill=c);hist(c)}
+    if(hasSub){if(ha.checked)fs.forEach(i=>delete i.sub);else{fs.forEach(i=>i.sub=hs.value);hist(hs.value)}}
+    m.remove();commit()};
   m.querySelector("#hh").innerHTML=D.house.hist.length?D.house.hist.map(c=>`<button class="swb" data-c="${c}" style="background:${c}" aria-label="${c}"></button>`).join(""):'<span class="empty" style="grid-column:auto">아직 저장된 색이 없어요</span>';
-  m.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>apply(b.dataset.c));
-  m.querySelector("#hok").onclick=()=>apply(m.querySelector("#hc").value);
+  m.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{
+    if(!hasSub){hc.value=b.dataset.c;mch=true;return done()}
+    if(tgt==="main"){hc.value=b.dataset.c;mch=true;if(ha.checked)hs.value=tint(hc.value)}else{hs.value=b.dataset.c;ha.checked=false}});
+  m.querySelector("#hok").onclick=done;
 }
 function editText(it){
   const m=modal("텍스트 수정",`<input id="tx" value="${esc(it.text||"")}"><button id="ok">확인</button>`);
