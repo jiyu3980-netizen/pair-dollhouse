@@ -345,10 +345,11 @@ function authModal(mode){
 }
 
 /* 저장된 의상 창 */
+const ph=t=>{let h=2166136261;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)}return(h>>>0).toString(36)+"."+t.length};
 function resolveEntry(s){
   if(s.kind!=="combo")return{char:s.src,worn:{},off:{},order:[...LAYER]};
   const c=D.saved.find(x=>x.id===s.charId);if(!c)return null;
-  const worn={};Object.entries(s.worn||{}).forEach(([cat,i])=>{const u=(D.parts[cat]||[])[i];if(u)worn[cat]=u});
+  const worn={},H=s.wornH||{};Object.entries(s.worn||{}).forEach(([cat,i])=>{const L=D.parts[cat]||[],u=(H[cat]&&L.find(x=>ph(x)===H[cat]))||L[i];if(u)worn[cat]=u});
   return{char:c.src,worn,off:s.off||{},order:s.order||[...LAYER]};
 }
 function loadInto(k,s){
@@ -371,7 +372,7 @@ function charModal(k){
   const g=m.querySelector("#pg");
   const draw=()=>{
     g.innerHTML=D.saved.length?D.saved.map(s=>{
-      const r=resolveEntry(s),lb=s.kind==="combo"?`${s.player?s.player+"P ":""}조합`:(s.player?s.player+"P":"캐릭터");
+      const r=resolveEntry(s),lb=s.kind==="combo"?`${s.player?s.player+"P ":""}조합 · 의상 ${Object.keys(r?r.worn:{}).length}`:(s.player?s.player+"P":"캐릭터");
       return `<div class="card" data-id="${s.id}"><div class="thumb">${r?stackHTML(seqOf(r)):'<div class="empty">원본 없음</div>'}</div><div class="row"><b>${lb}</b><button class="s" data-sh>공유</button><button class="s" data-d>삭제</button></div></div>`}).join(""):'<div class="empty">등록된 캐릭터가 없어요. 아래에서 등록해 보세요.</div>';
     g.querySelectorAll(".card").forEach(c=>{
       const s=D.saved.find(x=>x.id==c.dataset.id);
@@ -479,8 +480,8 @@ $("#btnSave").onclick=()=>{
   const p=D.pl[ui.cur];if(!p.char)return toast("캐릭터를 먼저 불러오거나 등록해 주세요");
   let c=D.saved.find(x=>x.kind!=="combo"&&x.src===p.char);
   if(!c){c={id:++D.uid,kind:"char",src:p.char};D.saved.push(c)}
-  const worn={};Object.entries(p.worn).forEach(([cat,src])=>{const i=(D.parts[cat]||[]).indexOf(src);if(i>=0)worn[cat]=i});
-  D.saved.push({id:++D.uid,kind:"combo",player:ui.cur,charId:c.id,worn,off:JSON.parse(JSON.stringify(p.off||{})),order:[...p.order]});
+  const worn={},wornH={};Object.entries(p.worn).forEach(([cat,src])=>{const i=(D.parts[cat]||[]).indexOf(src);if(i>=0){worn[cat]=i;wornH[cat]=ph(src)}});
+  D.saved.push({id:++D.uid,kind:"combo",player:ui.cur,charId:c.id,worn,wornH,off:JSON.parse(JSON.stringify(p.off||{})),order:[...p.order]});
   persist(true);toast(`${ui.cur}P 조합을 저장했어요`);
 };
 
@@ -944,15 +945,16 @@ function settle(set){
   }
   if(best)its.filter(i=>set.has(i.id)).forEach(i=>{i.x+=best.sx*best.g;i.y+=best.sy*best.g});
 }
+const GS=10,sn=(v,e)=>e&&e.altKey?v:Math.round(v/GS)*GS;
 const pt=e=>{const r=$("#hsvg").getBoundingClientRect();return{x:(e.clientX-r.left)*1000/r.width,y:(e.clientY-r.top)*600/r.height}};
 function attach(){window.addEventListener("pointermove",dmove);window.addEventListener("pointerup",dend,{once:true});window.addEventListener("pointercancel",dend,{once:true})}
 function startMove(p){hdrag={t:"move",p0:p,o:selItems().map(i=>({i,x:i.x,y:i.y}))};attach()}
 function startSize(c,p){const s=selItems();hdrag={t:"size",c,b:bbox(s),o:s.map(i=>({i,x:i.x,y:i.y,w:i.w,h:i.h}))};attach()}
 function dmove(e){
   if(!hdrag)return;const p=pt(e);
-  if(hdrag.t==="move"){const dx=p.x-hdrag.p0.x,dy=p.y-hdrag.p0.y;hdrag.o.forEach(o=>{o.i.x=o.x+dx;o.i.y=o.y+dy})}
+  if(hdrag.t==="move"){let dx=p.x-hdrag.p0.x,dy=p.y-hdrag.p0.y;if(!hdrag.moved){if(Math.hypot(dx,dy)<4)return;hdrag.moved=true}const o0=hdrag.o[0];if(o0&&!e.altKey){dx=sn(o0.x+dx)-o0.x;dy=sn(o0.y+dy)-o0.y}hdrag.o.forEach(o=>{o.i.x=o.x+dx;o.i.y=o.y+dy})}
   else if(hdrag.t==="size"){
-    const b=hdrag.b,ax=hdrag.c.includes("w")?b.x+b.w:b.x,ay=hdrag.c.includes("n")?b.y+b.h:b.y;
+    const b=hdrag.b,ax=hdrag.c.includes("w")?b.x+b.w:b.x,ay=hdrag.c.includes("n")?b.y+b.h:b.y;hdrag.moved=true;if(!e.shiftKey){p.x=sn(p.x,e);p.y=sn(p.y,e)}
     let x1=Math.min(p.x,ax),x2=Math.max(p.x,ax),y1=Math.min(p.y,ay),y2=Math.max(p.y,ay);
     x2=Math.max(x2,x1+10);y2=Math.max(y2,y1+10);
     if(e.shiftKey){const k=Math.max((x2-x1)/(b.w||1),(y2-y1)/(b.h||1)),nw=Math.max(10,b.w*k),nh=Math.max(10,b.h*k);if(hdrag.c.includes("w")){x1=ax-nw;x2=ax}else{x1=ax;x2=ax+nw}if(hdrag.c.includes("n")){y1=ay-nh;y2=ay}else{y1=ay;y2=ay+nh}}
@@ -966,7 +968,8 @@ function dend(){
   if(d.t==="marq"){
     const m={x:Math.min(d.p0.x,d.p1.x),y:Math.min(d.p0.y,d.p1.y),w:Math.abs(d.p0.x-d.p1.x),h:Math.abs(d.p0.y-d.p1.y)};
     if(m.w>3||m.h>3)IT().forEach(i=>{if(rectsOf(i).some(r=>hit(r,m)))pick(i,true)});
-  }else{
+  }else if(!d.moved){return}
+  else{
     settle(new Set(hsel));
     selItems().forEach(i=>{i.x=Math.min(Math.max(i.x,-i.w+20),980);i.y=Math.min(Math.max(i.y,-i.h+20),580)});
   }
@@ -988,13 +991,14 @@ function overlay(){
   if(hdrag&&hdrag.t==="marq"&&hdrag.p1){const d=hdrag;o+=`<rect x="${Math.min(d.p0.x,d.p1.x)}" y="${Math.min(d.p0.y,d.p1.y)}" width="${Math.abs(d.p0.x-d.p1.x)}" height="${Math.abs(d.p0.y-d.p1.y)}" fill="#8b6fd6" fill-opacity=".12" stroke="#8b6fd6" stroke-dasharray="4" pointer-events="none"/>`}
   return o;
 }
+HI.front='<rect x="3" y="3" width="12" height="12" rx="2"/><rect x="9" y="9" width="12" height="12" rx="2" fill="#212121"/>';HI.back='<rect x="3" y="3" width="12" height="12" rx="2" fill="#212121"/><rect x="9" y="9" width="12" height="12" rx="2" fill="#fff"/>';
 const canRot=i=>!i.kind.startsWith("label");
 function toolbar(){
   const tb=$("#htb"),s=selItems(),hs=$("#hsvg");
   if(!s.length||hdrag){tb.style.display="none";return}
   const b=bbox(s),sc=hs.clientWidth/1000||1,hasG=s.some(i=>i.g),same=hasG&&s.every(i=>i.g===s[0].g);
   const B=(a,t,k)=>`<button class="tbb" data-act="${a}" title="${t}" aria-label="${t}">${ic(k)}</button>`;
-  tb.innerHTML=B("dup","이미지 복제","dup")+B("del","이미지 삭제","del")+(s.some(canRot)?B("rot","시계 방향 90° 회전","rot")+B("fh","좌우 반전","fh")+B("fv","상하 반전","fv"):"")+B("move","이미지 이동 (누른 채 드래그)","move")+B("color","색상 선택기","color")+(s.length>1&&!same?B("group","그룹화","group"):"")+(hasG?B("ungroup","그룹화 해제","ungroup"):"");
+  tb.innerHTML=B("front","이미지 앞으로 오게 하기","front")+B("back","이미지 뒤로 오게 하기","back")+(s.some(canRot)?B("rot","시계 방향 90° 회전","rot")+B("fh","좌우 반전","fh")+B("fv","상하 반전","fv"):"")+B("color","색상 선택기","color")+(s.length>1&&!same?B("group","그룹화","group"):"")+(hasG?B("ungroup","그룹화 해제","ungroup"):"");
   tb.style.display="flex";
   const top=b.y*sc-52;
   tb.style.left=Math.max(90,Math.min((b.x+b.w/2)*sc,hs.clientWidth-90))+"px";
@@ -1016,12 +1020,12 @@ function renderTK(){
    +`<div class="tg">${list.map(f=>tile("k:"+f.k,f.n)).join("")}</div>`
    +(D.house.furn.length?`<div class="ks">내 가구</div><div class="tg">${D.house.furn.map(f=>tile("f:"+f.id)).join("")}</div>`:"");
   $("#tkList").innerHTML=top+fur;
-  $("#tkBar").innerHTML=tsel?`<button class="tbb" data-ta="add" title="이미지 복제 (조감도에 추가)" aria-label="이미지 복제">${ic("dup")}</button>`+(tsel[0]==="f"?'<button class="s" data-ta="share">공유</button><button class="s" data-ta="del">삭제</button>':""):"";
+  $("#tkBar").innerHTML=tsel?(tsel[0]==="f"?'<button class="s" data-ta="share">공유</button><button class="s" data-ta="del">삭제</button>':""):"";
 }
 function renderHouse(){
   const hs=$("#hsvg");if(!hs)return;
   const g=D.house.grid!==false;
-  hs.innerHTML=`<defs><filter id="ol" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="-20" y="-20" width="1400" height="1400"><feMorphology in="SourceAlpha" operator="dilate" radius="1.1" result="d"/><feFlood flood-color="#2b2b2b"/><feComposite in2="d" operator="in" result="o"/><feMerge><feMergeNode in="o"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="gp" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="#e8e5ee" stroke-width="0.6"/></pattern></defs><rect width="1000" height="600" fill="#fff" pointer-events="none"/>${g?'<rect width="1000" height="600" fill="url(#gp)" pointer-events="none"/>':""}`+IT().map(itemG).join("")+overlay();
+  hs.innerHTML=`<defs><filter id="ol" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="-20" y="-20" width="1400" height="1400"><feMorphology in="SourceAlpha" operator="dilate" radius="1.1" result="d"/><feFlood flood-color="#2b2b2b"/><feComposite in2="d" operator="in" result="o"/><feMerge><feMergeNode in="o"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="gp" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M10 0V50M20 0V50M30 0V50M40 0V50M0 10H50M0 20H50M0 30H50M0 40H50" fill="none" stroke="#efecf4" stroke-width="0.5"/><path d="M50 0H0V50" fill="none" stroke="#ddd8e8" stroke-width="0.7"/></pattern></defs><rect width="1000" height="600" fill="#fff" pointer-events="none"/>${g?'<rect width="1000" height="600" fill="url(#gp)" pointer-events="none"/>':""}`+IT().map(itemG).join("")+overlay();
   $("#eyeBtn").innerHTML=ic(g?"eye":"eyeoff",16);$("#undoBtn").innerHTML=ic("undo",16);$("#clrBtn").innerHTML=ic("clear",16);$("#undoBtn").style.opacity=uStack.length?1:.4;
   toolbar();renderTK();
 }
@@ -1032,11 +1036,20 @@ function addFromTile(id,cx,cy){
   const it={id:gid(),kind:k,x:cx-w/2,y:cy-h/2,w,h,dw:w,dh:h,text:TXT[k],fid};
   IT().push(it);return it;
 }
+const bb=i=>({x:i.x,y:i.y,w:i.w,h:i.h});
 function act(a){
   const s=selItems();if(!s.length)return;
   if(a==="color")return colorModal();
   if(a==="del"){D.house.work=IT().filter(i=>!hsel.has(i.id));hsel=new Set()}
   else if(a==="dup"){const gm={},cp=s.map(i=>{const n={...i,id:gid(),x:i.x+24,y:i.y+24};if(i.g){gm[i.g]=gm[i.g]||gid();n.g=gm[i.g]}return n});IT().push(...cp);hsel=new Set(cp.map(i=>i.id));settle(hsel)}
+  else if(a==="front"||a==="back"){
+    const arr=IT(),fr=a==="front",ids=new Set(s.map(i=>i.id));let moved=false;
+    const order=arr.filter(i=>ids.has(i.id));if(fr)order.reverse();
+    order.forEach(it=>{const i=arr.indexOf(it),ov=x=>!ids.has(x.id)&&hit(bb(it),bb(x));
+      let j=-1;if(fr){for(let k=i+1;k<arr.length;k++)if(ov(arr[k])){j=k;break}}else{for(let k=i-1;k>=0;k--)if(ov(arr[k])){j=k;break}}
+      if(j<0)return;arr.splice(i,1);arr.splice(j,0,it);moved=true});
+    if(!moved)return toast(fr?"이미 가장 앞에 있어요":"이미 가장 뒤에 있어요");
+  }
   else if(a==="rot"){s.filter(canRot).forEach(i=>{const cx=i.x+i.w/2,cy=i.y+i.h/2;[i.w,i.h]=[i.h,i.w];[i.dw,i.dh]=[i.dh,i.dw];i.x=cx-i.w/2;i.y=cy-i.h/2;i.rot=((i.rot||0)+90)%360});settle(new Set(hsel))}
   else if(a==="fh"||a==="fv"){s.filter(canRot).forEach(i=>{const k=(a==="fh")!==((i.rot||0)%180===90)?"fx":"fy";if(i[k])delete i[k];else i[k]=true})}
   else if(a==="reset"){s.forEach(i=>{i.w=i.dw;i.h=i.dh});settle(new Set(hsel))}
@@ -1101,18 +1114,19 @@ window.addEventListener("keydown",e=>{
 $("#clrBtn").onclick=()=>{if(!IT().length)return toast("이미 빈 캔버스예요");D.house.work=[];hsel=new Set();commit();toast("캔버스를 비웠어요. 되돌리기로 복구할 수 있어요")};
 $("#eyeBtn").onclick=()=>{D.house.grid=D.house.grid===false;commit()};
 /* 툴킷 */
+let tadd=0;
 $("#tkList").onpointerdown=e=>{
   const ch=e.target.closest("[data-fc],[data-fs]");
   if(ch){if(ch.dataset.fc){ui.fc=ch.dataset.fc;ui.fs=null}else ui.fs=ch.dataset.fs;renderTK();return}
   const t=e.target.closest("[data-tk]");if(!t)return;
   tsel=t.dataset.tk;renderTK();
-  const sx=e.clientX,sy=e.clientY,id=tsel;
+  const sx=e.clientX,sy=e.clientY,id=tsel;let dragged=false;
   const mv=ev=>{
     if(Math.hypot(ev.clientX-sx,ev.clientY-sy)<8)return;
-    cl();const p=pt(ev),it=addFromTile(id,Math.min(Math.max(p.x,40),960),Math.min(Math.max(p.y,40),560));
+    cl();dragged=true;const p=pt(ev),it=addFromTile(id,Math.min(Math.max(p.x,40),960),Math.min(Math.max(p.y,40),560));
     if(!it)return;hsel=new Set([it.id]);renderHouse();startMove(p);
   };
-  const up=()=>cl();
+  const up=()=>{cl();if(dragged)return;tadd++;const c=(tadd%6)*20,it=addFromTile(id,490+c+Math.random()*10,290+c+Math.random()*10);if(it){it.x=sn(it.x);it.y=sn(it.y);hsel=new Set([it.id]);settle(new Set(hsel));commit()}};
   function cl(){window.removeEventListener("pointermove",mv);window.removeEventListener("pointerup",up)}
   window.addEventListener("pointermove",mv);window.addEventListener("pointerup",up);
 };
