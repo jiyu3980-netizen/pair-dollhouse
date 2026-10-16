@@ -1073,6 +1073,14 @@ $("#htb").onclick=e=>{const b=e.target.closest("[data-act]");if(b&&b.dataset.act
 $("#htb").onpointerdown=e=>{const b=e.target.closest("[data-act]");if(b&&b.dataset.act==="move"){e.preventDefault();startMove(pt(e))}};
 $("#undoBtn").onclick=undo;
 window.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="z"&&$("#house").classList.contains("on")&&!/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||"")&&!document.querySelector(".ov")){e.preventDefault();undo()}});
+let hclip=null,hpn=0;
+window.addEventListener("keydown",e=>{
+  if(!$("#house").classList.contains("on")||/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||"")||document.querySelector(".ov"))return;
+  const mod=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
+  if(mod&&!e.shiftKey&&!e.altKey&&k==="c"){const s=selItems();if(!s.length)return;e.preventDefault();hclip=JSON.parse(JSON.stringify(s));hpn=0;toast(s.length+"개 복사했어요. Ctrl+V로 붙여넣기")}
+  else if(mod&&!e.shiftKey&&!e.altKey&&k==="v"){if(!hclip||!hclip.length)return;e.preventDefault();hpn++;const gm={},cp=hclip.map(i=>{const n={...JSON.parse(JSON.stringify(i)),id:gid(),x:i.x+24*hpn,y:i.y+24*hpn};if(i.g){gm[i.g]=gm[i.g]||gid();n.g=gm[i.g]}return n});IT().push(...cp);hsel=new Set(cp.map(i=>i.id));settle(new Set(hsel));commit()}
+  else if(!mod&&!e.altKey&&(e.key==="Delete"||e.key==="Backspace")){if(!selItems().length)return;e.preventDefault();act("del")}
+});
 $("#clrBtn").onclick=()=>{if(!IT().length)return toast("이미 빈 캔버스예요");D.house.work=[];hsel=new Set();commit();toast("캔버스를 비웠어요. 되돌리기로 복구할 수 있어요")};
 $("#eyeBtn").onclick=()=>{D.house.grid=D.house.grid===false;commit()};
 /* 툴킷 */
