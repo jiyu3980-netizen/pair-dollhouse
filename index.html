@@ -55,7 +55,8 @@ main{max-width:1100px;margin:0 auto;padding:0 16px 32px}
 .parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;margin:12px 0;min-height:80px}
 .part{aspect-ratio:1;border-radius:14px;border:2px solid var(--line);background:var(--chip) no-repeat center/contain;cursor:pointer;position:relative}
 .part.on{border:3px solid #212121}
-.part.on::after{content:"✓";position:absolute;top:-8px;right:-8px;background:#212121;color:#fff;border-radius:50%;width:22px;height:22px;font-size:12px;display:flex;align-items:center;justify-content:center}
+.part .pdel{display:none;position:absolute;top:-9px;right:-9px;background:#212121;color:#fff;border-radius:50%;width:24px;height:24px;padding:0;font-size:13px;line-height:1;align-items:center;justify-content:center;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.part.on .pdel{display:flex}
 .empty{grid-column:1/-1;color:#999;font-size:14px;text-align:center;align-self:center}
 .layers{border-top:2px dashed var(--line);padding-top:8px}
 .layer{display:flex;align-items:center;gap:6px;background:var(--chip);border-radius:999px;padding:5px 8px 5px 16px;margin-top:6px}
@@ -138,6 +139,7 @@ h3{font-family:"Black Han Sans",sans-serif;font-size:32px;font-weight:400}
 /* 불러오기 창 */
 .thumb{position:relative;aspect-ratio:1;background:#fff;border-radius:12px;cursor:pointer;overflow:hidden}
 .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;border-radius:0}
+.card .thumb img{background:transparent}
 .flat button{padding:6px 22px;font-size:14px}
 #dlL,#dlR{background:var(--ab);box-shadow:inset 0 0 0 1px rgba(33,33,33,.15)}
 /* 사이드 내비 */
@@ -345,16 +347,17 @@ function authModal(mode){
 }
 
 /* 저장된 의상 창 */
+const PT=k=>(k||ui.cur)===2?D.parts2:D.parts;
 const ph=t=>{let h=2166136261;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)}return(h>>>0).toString(36)+"."+t.length};
 function resolveEntry(s){
   if(s.kind!=="combo")return{char:s.src,worn:{},off:{},order:[...LAYER]};
   const c=D.saved.find(x=>x.id===s.charId);if(!c)return null;
-  const worn={},H=s.wornH||{};Object.entries(s.worn||{}).forEach(([cat,i])=>{const L=D.parts[cat]||[],u=(H[cat]&&L.find(x=>ph(x)===H[cat]))||L[i];if(u)worn[cat]=u});
+  const worn={},H=s.wornH||{};Object.entries(s.worn||{}).forEach(([cat,i])=>{const L=PT(s.player||1)[cat]||[],u=(H[cat]&&L.find(x=>ph(x)===H[cat]))||L[i];if(u)worn[cat]=u});
   return{char:c.src,worn,off:s.off||{},order:s.order||[...LAYER]};
 }
 function loadInto(k,s){
   const r=resolveEntry(s);if(!r)return toast("원본 캐릭터를 찾을 수 없어요");
-  const p=D.pl[k];p.char=r.char;p.worn={...r.worn};p.off=JSON.parse(JSON.stringify(r.off));p.order=[...r.order];
+  const p=D.pl[k];p.char=r.char;p.worn={...r.worn};Object.entries(r.worn).forEach(([c,u])=>{const L=PT(k);L[c]=L[c]||[];if(!L[c].includes(u))L[c].push(u)});p.off=JSON.parse(JSON.stringify(r.off));p.order=[...r.order];
   LAYER.forEach(c=>{if(!p.order.includes(c))p.order.push(c)});
   render();persist(true);
 }
@@ -447,9 +450,15 @@ function renderCats(){
   document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{ui.cat=b.dataset.c;renderCats();renderParts();updDpad()});
 }
 function renderParts(){
-  const p=D.pl[ui.cur],list=D.parts[ui.cat];
-  $("#parts").innerHTML=list.length?list.map((s,i)=>`<div class="part ${p.worn[ui.cat]===s?"on":""}" data-i="${i}" style="background-image:url(${s})"><button class="s shr" data-sh="${i}">공유</button></div>`).join(""):`<div class="empty">'등록'으로 ${ui.cat} 의상을 추가하세요</div>`;
+  const p=D.pl[ui.cur],list=PT()[ui.cat];
+  $("#parts").innerHTML=list.length?list.map((s,i)=>`<div class="part ${p.worn[ui.cat]===s?"on":""}" data-i="${i}" style="background-image:url(${s})"><button class="s shr" data-sh="${i}">공유</button><button class="pdel" data-pdel="${i}" aria-label="이 의상 삭제" title="이 의상 삭제">✕</button></div>`).join(""):`<div class="empty">'등록'으로 ${ui.cat} 의상을 추가하세요</div>`;
   document.querySelectorAll("[data-sh]").forEach(b=>b.onclick=e=>{e.stopPropagation();shareCode(ui.cat,+b.dataset.sh)});
+  document.querySelectorAll("[data-pdel]").forEach(b=>b.onclick=e=>{
+    e.stopPropagation();const i=+b.dataset.pdel,src=list[i];if(!src)return;
+    if(!confirm("이 의상 파츠를 삭제할까요? 삭제하면 되돌릴 수 없어요."))return;
+    list.splice(i,1);[1,2].forEach(k=>{const w=D.pl[k].worn;if(w[ui.cat]===src){delete w[ui.cat];delete D.pl[k].off[ui.cat]}});
+    render();persist(true);toast("의상을 삭제했어요");
+  });
   document.querySelectorAll(".part").forEach(el=>el.onclick=()=>{
     if(!p.char)return toast("먼저 캐릭터 이미지를 첨부해 주세요");
     const s=list[+el.dataset.i];
@@ -468,7 +477,7 @@ function renderLayers(){
   document.querySelectorAll("[data-up]").forEach(b=>b.onclick=()=>move(b.dataset.up,1));
   document.querySelectorAll("[data-dn]").forEach(b=>b.onclick=()=>move(b.dataset.dn,-1));
 }
-$("#btnReg").onclick=()=>pickFile(true,a=>{D.parts[ui.cat].push(...a);renderParts();persist(true)});
+$("#btnReg").onclick=()=>pickFile(true,a=>{PT()[ui.cat].push(...a);renderParts();persist(true)});
 $("#btnReset").onclick=()=>{D.pl[ui.cur].worn={};D.pl[ui.cur].off={};render();persist()};
 async function compose(k=ui.cur,pp){
   const p=pp||D.pl[k];if(!p.char)return null;
@@ -480,7 +489,7 @@ $("#btnSave").onclick=()=>{
   const p=D.pl[ui.cur];if(!p.char)return toast("캐릭터를 먼저 불러오거나 등록해 주세요");
   let c=D.saved.find(x=>x.kind!=="combo"&&x.src===p.char);
   if(!c){c={id:++D.uid,kind:"char",src:p.char};D.saved.push(c)}
-  const worn={},wornH={};Object.entries(p.worn).forEach(([cat,src])=>{const i=(D.parts[cat]||[]).indexOf(src);if(i>=0){worn[cat]=i;wornH[cat]=ph(src)}});
+  const worn={},wornH={};Object.entries(p.worn).forEach(([cat,src])=>{const i=(PT()[cat]||[]).indexOf(src);if(i>=0){worn[cat]=i;wornH[cat]=ph(src)}});
   D.saved.push({id:++D.uid,kind:"combo",player:ui.cur,charId:c.id,worn,wornH,off:JSON.parse(JSON.stringify(p.off||{})),order:[...p.order]});
   persist(true);toast(`${ui.cur}P 조합을 저장했어요`);
 };
@@ -507,7 +516,7 @@ function showCode(code,what){
     toast("코드를 복사했어요");
   };
 }
-async function shareCode(cat,i){const c=await makeCode(cat,D.parts[cat][i],cat+":"+i);if(c)showCode(c,`이 의상(${cat})`)}
+async function shareCode(cat,i){const c=await makeCode(cat,PT()[cat][i],(ui.cur===2?"p2:":"")+cat+":"+i);if(c)showCode(c,`이 의상(${cat})`)}
 async function shareChar(s){const c=await makeCode("캐릭터",s.src,"char:"+s.id);if(c)showCode(c,"이 캐릭터")}
 function setChar(k,src){
   const p=D.pl[k];p.char=src;p.worn={};p.off={};
@@ -545,9 +554,9 @@ function redeemModal(onDone){
       }else{
         const c=MIG[category]||category;
         if(!CATS.includes(c))return err("지원하지 않는 카테고리예요");
-        D.parts[c]=D.parts[c]||[];
-        if(D.parts[c].includes(image))return err("이미 등록된 의상이에요");
-        D.parts[c].push(image);ui.cat=c;render();toast(`${c} 카테고리에 등록했어요`);
+        const PL=PT();PL[c]=PL[c]||[];
+        if(PL[c].includes(image))return err("이미 등록된 의상이에요");
+        PL[c].push(image);ui.cat=c;render();toast(`${c} 카테고리에 등록했어요`);
       }
       persist(true);m.remove();if(onDone)onDone();
     }catch(e){err("서버에 연결할 수 없어요")}
@@ -556,12 +565,14 @@ function redeemModal(onDone){
 }
 $("#btnRegCode").onclick=()=>redeemModal();
 function migrate(){
+  if(!D.parts2)D.parts2=JSON.parse(JSON.stringify(D.parts));
   D.house=Object.assign({furn:[],hist:[],plans:[],work:[],grid:true},D.house||{});
   [1,2].forEach(k=>{D.pl[k].off=D.pl[k].off||{}});
   Object.entries(MIG).forEach(([o,n])=>{
     if(D.parts[o]){
       const had=(D.parts[n]||[]).length;
       D.parts[n]=(D.parts[n]||[]).concat(D.parts[o]);delete D.parts[o];
+      if(D.parts2&&D.parts2[o]){D.parts2[n]=(D.parts2[n]||[]).concat(D.parts2[o]);delete D.parts2[o]}
       if(!had)Object.keys(D.codes).forEach(k=>{if(k.startsWith(o+":")){D.codes[n+k.slice(o.length)]=D.codes[k];delete D.codes[k]}});
     }
     [1,2].forEach(k=>{const p=D.pl[k];if(p.worn[o]){if(!p.worn[n])p.worn[n]=p.worn[o];delete p.worn[o]}p.order=p.order.map(c=>c===o?n:c)});
@@ -1262,7 +1273,7 @@ $("#hLoad").onclick=()=>{
 function refreshAll(){
   [1,2].forEach(k=>{if(!D.pl[k].char&&D.main[k]){D.pl[k].char=D.main[k];D.main[k]=null}});
   migrate();
-  CATS.forEach(c=>{D.parts[c]=D.parts[c]||[];[1,2].forEach(k=>{if(!D.pl[k].order.includes(c))D.pl[k].order.push(c)})});
+  CATS.forEach(c=>{D.parts[c]=D.parts[c]||[];D.parts2[c]=D.parts2[c]||[];[1,2].forEach(k=>{if(!D.pl[k].order.includes(c))D.pl[k].order.push(c)})});
   renderAcct();render();renderMain();renderBook();renderHouse();resetUndo();
   $("#nm1").value=D.names[1];$("#nm2").value=D.names[2];$("#pairName").value=D.pairName;
 }
