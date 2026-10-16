@@ -257,9 +257,11 @@ h3{font-family:"Black Han Sans",sans-serif;font-size:32px;font-weight:400}
 const CATS=["앞머리","뒷머리","상의","하의","아우터(앞)","아우터(뒤)","일체형","신발","악세사리1","악세사리2","악세사리3"];
 const LAYER=["상의","하의","아우터(앞)","아우터(뒤)","일체형","신발","악세사리1","악세사리2","악세사리3","앞머리","뒷머리"];
 const MIG={"아우터":"아우터(앞)","헤어스타일":"앞머리","악세사리":"악세사리1"},BACK=new Set(["뒷머리","아우터(뒤)"]);
+const CH="@char",normOrder=o=>{o=[...new Set(o||LAYER)];if(o.includes(CH))return o;return[...o.filter(c=>BACK.has(c)),CH,...o.filter(c=>!BACK.has(c))]};
+const fixOrder=p=>{p.order=normOrder(p.order);CATS.forEach(c=>{if(!p.order.includes(c)){if(BACK.has(c))p.order.splice(p.order.indexOf(CH),0,c);else p.order.push(c)}})};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const mk=()=>({char:null,worn:{},off:{},order:[...LAYER]});
+const mk=()=>({char:null,worn:{},off:{},order:normOrder(LAYER)});
 const blank=()=>({parts:Object.fromEntries(CATS.map(c=>[c,[]])),pl:{1:mk(),2:mk()},saved:[],pairs:[],codes:{},house:{furn:[],hist:[],plans:[],work:[],grid:true},main:{1:null,2:null},names:{1:"",2:""},pairName:"",uid:0});
 let D=blank(),user=null,ui={cur:1,cat:CATS[0]};
 
@@ -350,15 +352,15 @@ function authModal(mode){
 const PT=k=>(k||ui.cur)===2?D.parts2:D.parts;
 const ph=t=>{let h=2166136261;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)}return(h>>>0).toString(36)+"."+t.length};
 function resolveEntry(s){
-  if(s.kind!=="combo")return{char:s.src,worn:{},off:{},order:[...LAYER]};
+  if(s.kind!=="combo")return{char:s.src,worn:{},off:{},order:normOrder(LAYER)};
   const c=D.saved.find(x=>x.id===s.charId);if(!c)return null;
   const worn={},H=s.wornH||{};Object.entries(s.worn||{}).forEach(([cat,i])=>{const L=PT(s.player||1)[cat]||[],u=(H[cat]&&L.find(x=>ph(x)===H[cat]))||L[i];if(u)worn[cat]=u});
-  return{char:c.src,worn,off:s.off||{},order:s.order||[...LAYER]};
+  return{char:c.src,worn,off:s.off||{},order:normOrder(s.order)};
 }
 function loadInto(k,s){
   const r=resolveEntry(s);if(!r)return toast("원본 캐릭터를 찾을 수 없어요");
   const p=D.pl[k];p.char=r.char;p.worn={...r.worn};Object.entries(r.worn).forEach(([c,u])=>{const L=PT(k);L[c]=L[c]||[];if(!L[c].includes(u))L[c].push(u)});p.off=JSON.parse(JSON.stringify(r.off));p.order=[...r.order];
-  LAYER.forEach(c=>{if(!p.order.includes(c))p.order.push(c)});
+  fixOrder(p);
   render();persist(true);
 }
 async function shareEntry(s){
@@ -393,9 +395,9 @@ function charModal(k){
 }
 
 /* 메인 */
-function seqOf(p){if(!p||!p.char)return[];const w=(p.order||LAYER).filter(c=>p.worn[c]);
+function seqOf(p){if(!p||!p.char)return[];const w=normOrder(p.order).filter(c=>c===CH||p.worn[c]);
   const L=c=>{const o=(p.off||{})[c]||{};return{s:p.worn[c],x:o.x||0,y:o.y||0}};
-  return[...w.filter(c=>BACK.has(c)).map(L),{s:p.char,x:0,y:0},...w.filter(c=>!BACK.has(c)).map(L)]}
+  return w.map(c=>c===CH?{s:p.char,x:0,y:0}:L(c))}
 const seq=k=>seqOf(D.pl[k]);
 const stackHTML=l=>l.map(x=>`<img src="${x.s}"${x.x||x.y?` style="transform:translate(${x.x/6}%,${x.y/6}%)"`:""}>`).join("");
 function layersHTML(k){return stackHTML(seq(k))}
@@ -468,12 +470,12 @@ function renderParts(){
   });
 }
 function renderLayers(){
-  const p=D.pl[ui.cur],w=p.order.filter(c=>p.worn[c]);
-  const row=c=>`<div class="layer"><span>${c}</span><button class="s" data-up="${c}">▲ 앞으로</button><button class="s" data-dn="${c}">▼ 뒤로</button></div>`;
-  const fr=w.filter(c=>!BACK.has(c)).reverse(),bk=w.filter(c=>BACK.has(c)).reverse();
-  $("#layerList").innerHTML=w.length?fr.map(row).join("")+'<div class="layer base"><span>— 캐릭터 —</span></div>'+bk.map(row).join(""):'<div class="empty" style="margin-top:6px">입힌 의상이 없어요</div>';
-  const move=(c,d)=>{const a=w.filter(x=>BACK.has(x)===BACK.has(c)),i=a.indexOf(c),j=i+d;if(j<0||j>=a.length)return;
-    const x=p.order.indexOf(a[i]),y=p.order.indexOf(a[j]);[p.order[x],p.order[y]]=[p.order[y],p.order[x]];render();persist()};
+  const p=D.pl[ui.cur];fixOrder(p);
+  const w=p.char?p.order.filter(c=>c===CH||p.worn[c]):[];
+  const row=c=>`<div class="layer"><span${c===CH?" style=\"font-weight:700\"":""}>${c===CH?"캐릭터":c}</span><button class="s" data-up="${c}">▲ 앞으로</button><button class="s" data-dn="${c}">▼ 뒤로</button></div>`;
+  $("#layerList").innerHTML=w.length?[...w].reverse().map(row).join(""):'<div class="empty" style="margin-top:6px">캐릭터를 먼저 불러와 주세요</div>';
+  const move=(c,d)=>{const i=w.indexOf(c),j=i+d;if(j<0||j>=w.length)return;
+    const x=p.order.indexOf(w[i]),y=p.order.indexOf(w[j]);[p.order[x],p.order[y]]=[p.order[y],p.order[x]];render();persist()};
   document.querySelectorAll("[data-up]").forEach(b=>b.onclick=()=>move(b.dataset.up,1));
   document.querySelectorAll("[data-dn]").forEach(b=>b.onclick=()=>move(b.dataset.dn,-1));
 }
@@ -1273,7 +1275,7 @@ $("#hLoad").onclick=()=>{
 function refreshAll(){
   [1,2].forEach(k=>{if(!D.pl[k].char&&D.main[k]){D.pl[k].char=D.main[k];D.main[k]=null}});
   migrate();
-  CATS.forEach(c=>{D.parts[c]=D.parts[c]||[];D.parts2[c]=D.parts2[c]||[];[1,2].forEach(k=>{if(!D.pl[k].order.includes(c))D.pl[k].order.push(c)})});
+  CATS.forEach(c=>{D.parts[c]=D.parts[c]||[];D.parts2[c]=D.parts2[c]||[];});[1,2].forEach(k=>fixOrder(D.pl[k]));
   renderAcct();render();renderMain();renderBook();renderHouse();resetUndo();
   $("#nm1").value=D.names[1];$("#nm2").value=D.names[2];$("#pairName").value=D.pairName;
 }
