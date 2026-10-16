@@ -376,7 +376,7 @@ function charModal(k){
   const draw=()=>{
     g.innerHTML=D.saved.length?D.saved.map(s=>{
       const r=resolveEntry(s),lb=s.kind==="combo"?`${s.player?s.player+"P ":""}조합 · 의상 ${Object.keys(r?r.worn:{}).length}`:(s.player?s.player+"P":"캐릭터");
-      return `<div class="card" data-id="${s.id}"><div class="thumb">${r?stackHTML(seqOf(r)):'<div class="empty">원본 없음</div>'}</div><div class="row"><b>${lb}</b><button class="s" data-sh>공유</button><button class="s" data-d>삭제</button></div></div>`}).join(""):'<div class="empty">등록된 캐릭터가 없어요. 아래에서 등록해 보세요.</div>';
+      return `<div class="card" data-id="${s.id}"><div class="thumb">${r?stackHTML(seqOf(r)):'<div class="empty">원본 없음</div>'}</div><div class="row"><span style="flex:1" title="${lb}"></span><button class="s" data-sh>공유</button><button class="s" data-d>삭제</button></div></div>`}).join(""):'<div class="empty">등록된 캐릭터가 없어요. 아래에서 등록해 보세요.</div>';
     g.querySelectorAll(".card").forEach(c=>{
       const s=D.saved.find(x=>x.id==c.dataset.id);
       c.querySelector(".thumb").onclick=()=>{loadInto(k,s);m.remove()};
