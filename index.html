@@ -579,6 +579,8 @@ $("#btnRegCode").onclick=()=>redeemModal();
 function migrate(){
   if(!D.parts2)D.parts2=JSON.parse(JSON.stringify(D.parts));
   D.house=Object.assign({furn:[],hist:[],plans:[],work:[],grid:true,mode:"plan",pwork:[],pplans:[],pfloor:"oak",pwall:"cream"},D.house||{});D.house.mode="plan"; /* 픽셀 룸은 사용하지 않음: 평면도 전용 */
+  /* 1회 정리: 러시아 주택에 반영 끝난 임시 저장본("레렌…")을 불러오기 목록에서 삭제 */
+  if(!D.house.lerenDone){D.house.plans=(D.house.plans||[]).filter(q=>!/^레렌/.test(q.name||""));D.house.lerenDone=1}
   if(D.house.pv!==2){D.house.pv=2;D.house.pwork=[]}
   if(D.house.cv!==3&&window.REMK){D.house.cv=3;D.house.plans=[];D.house.pplans=[];D.house.work=(D.house.work||[]).filter(i=>!REMK.has(i.kind))} /* 저장된 평면도 전부 삭제(1회) */
   if(window.REMK){const F=a=>Array.isArray(a)?a.filter(i=>!(i&&REMK.has(i.kind))):a;D.house.work=F(D.house.work);(D.house.plans||[]).concat(D.house.pplans||[]).forEach(pl=>{if(pl&&pl.items)pl.items=F(pl.items)})}
@@ -1770,7 +1772,9 @@ DEFS.door=DEFS.doorR=[44,44];
 const isPx=()=>D.house.mode==="pixel",IT=()=>isPx()?D.house.pwork:D.house.work,setWork=a=>{if(isPx())D.house.pwork=a;else D.house.work=a},find=id=>IT().find(i=>i.id===id);
 let hsel=new Set(),hdrag=null,tsel=null,lastTap={};
 const selItems=()=>IT().filter(i=>hsel.has(i.id));
-const bbox=a=>{const x=Math.min(...a.map(i=>i.x)),y=Math.min(...a.map(i=>i.y));return{x,y,w:Math.max(...a.map(i=>i.x+i.w))-x,h:Math.max(...a.map(i=>i.y+i.h))-y}};
+const genRot=i=>(i.rot||0)%90!==0;
+const ext=i=>{if(!genRot(i))return{x:i.x,y:i.y,w:i.w,h:i.h};const a=(i.rot||0)*Math.PI/180,c=Math.abs(Math.cos(a)),n=Math.abs(Math.sin(a)),W=i.w*c+i.h*n,H=i.w*n+i.h*c,cx=i.x+i.w/2,cy=i.y+i.h/2;return{x:cx-W/2,y:cy-H/2,w:W,h:H}};
+const bbox=a=>{const e=a.map(ext),x=Math.min(...e.map(i=>i.x)),y=Math.min(...e.map(i=>i.y));return{x,y,w:Math.max(...e.map(i=>i.x+i.w))-x,h:Math.max(...e.map(i=>i.y+i.h))-y}};
 function pick(it,add){(it.g?IT().filter(i=>i.g===it.g):[it]).forEach(i=>add?hsel.add(i.id):hsel.delete(i.id))}
 const FK=new Set(FURN.map(f=>f.k));(HO.man||[]).forEach(o=>FK.add(o.id));
 const tint=(c,t=.6)=>{const m=/^#([0-9a-f]{6})$/i.exec(c||"");if(!m)return c;const n=parseInt(m[1],16),mx=v=>Math.round(v+(255-v)*t).toString(16).padStart(2,"0");return"#"+mx(n>>16)+mx((n>>8)&255)+mx(n&255)};
@@ -1845,12 +1849,13 @@ function itemG0(it){
   if(tdef)inner=tdef+inner;
   if(it.fx)inner=`<g transform="translate(${lw} 0) scale(-1 1)">${inner}</g>`;
   if(it.fy)inner=`<g transform="translate(0 ${lh}) scale(1 -1)">${inner}</g>`;
-  if(r===90)inner=`<g transform="translate(${it.w} 0) rotate(90)">${inner}</g>`;
+  if(r%90)inner=`<g transform="rotate(${r} ${it.w/2} ${it.h/2})">${inner}</g>`;
+  else if(r===90)inner=`<g transform="translate(${it.w} 0) rotate(90)">${inner}</g>`;
   else if(r===180)inner=`<g transform="translate(${it.w} ${it.h}) rotate(180)">${inner}</g>`;
   else if(r===270)inner=`<g transform="translate(0 ${it.h}) rotate(-90)">${inner}</g>`;
   return `<g data-id="${it.id}" transform="translate(${it.x} ${it.y})" style="cursor:move">${inner}</g>`;
 }
-function rectsOf(it){const{x,y,w,h}=it;
+function rectsOf(it){if(genRot(it)&&it.kind!=="wpath")return[ext(it)];const{x,y,w,h}=it;
   if(it.kind==="wpath"){const P=(it.pts||[]).map(a=>[x+a[0]*w,y+a[1]*h]),o=[],n=it.cl?P.length:P.length-1;for(let i=0;i<n;i++){const a=P[i],b=P[(i+1)%P.length],L=Math.hypot(b[0]-a[0],b[1]-a[1]),k=Math.max(1,Math.ceil(L/6));for(let j=0;j<=k;j++){const px=a[0]+(b[0]-a[0])*j/k,py=a[1]+(b[1]-a[1])*j/k;o.push({x:px-4,y:py-4,w:8,h:8})}}return o}
   if(it.kind==="wall"||it.kind==="dash"||it.kind==="arrow")return h>w?[{x:x+w/2-4,y,w:8,h}]:[{x,y:y+h/2-4,w,h:8}];
   if(it.kind==="elbow"||it.kind==="elbowd"){
@@ -1861,12 +1866,24 @@ function rectsOf(it){const{x,y,w,h}=it;
   return[{x,y,w,h}]}
 const hit=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 /* 직선 벽 위에는 다른 개체가 겹칠 수 없음: 놓는 순간 벽 바로 옆으로 이동 */
+/* 벽 붙이기: 도형 여백이 아니라 실제로 그려진 선(잉크) 기준으로 맞닿게 */
+const INKC={};let inkSvg=null;
+function inkFrac(it){const k=it.kind;if(k in INKC)return INKC[k];let f=null;
+  try{if(DR[k]&&!LINEK.has(k)&&!k.startsWith("label")&&it.kind!=="img"){if(!inkSvg){inkSvg=document.createElementNS("http://www.w3.org/2000/svg","svg");inkSvg.setAttribute("style","position:absolute;left:-9999px;top:0;width:10px;height:10px;visibility:hidden");document.body.appendChild(inkSvg)}
+    inkSvg.innerHTML='<g>'+DR[k](100,100,"#fff",{...it,w:100,h:100,dw:100,dh:100,x:0,y:0,rot:0,fx:false,fy:false})+'</g>';inkSvg.querySelectorAll('rect[fill-opacity=".01"]').forEach(r=>r.remove());const bb=inkSvg.firstChild.getBBox();
+    if(bb.width>8&&bb.height>8)f=[Math.max(0,bb.x)/100,Math.max(0,bb.y)/100,Math.min(100,bb.x+bb.width)/100,Math.min(100,bb.y+bb.height)/100]}}catch(e){}
+  return INKC[k]=f}
+function inkRects(it){const f=genRot(it)?null:inkFrac(it);if(!f)return rectsOf(it);
+  const r=it.rot||0,sw=r===90||r===270,lw=sw?it.h:it.w,lh=sw?it.w:it.h;let X0=f[0]*lw,X1=f[2]*lw,Y0=f[1]*lh,Y1=f[3]*lh;
+  if(it.fx){[X0,X1]=[lw-X1,lw-X0]}if(it.fy){[Y0,Y1]=[lh-Y1,lh-Y0]}
+  const mp=(x,y)=>r===90?[it.w-y,x]:r===180?[it.w-x,it.h-y]:r===270?[y,it.h-x]:[x,y],a=mp(X0,Y0),b=mp(X1,Y1);
+  return[{x:it.x+Math.min(a[0],b[0]),y:it.y+Math.min(a[1],b[1]),w:Math.abs(a[0]-b[0]),h:Math.abs(a[1]-b[1])}]}
 function settle(set){
   const its=IT(),mv=its.filter(i=>set.has(i.id)&&!WALLK.has(i.kind)&&!DOORK.has(i.kind)),walls=its.filter(i=>!set.has(i.id)&&WALLK.has(i.kind)).flatMap(rectsOf);
   if(!walls.length||!mv.length)return;
   for(let n=0;n<8;n++){
     let moved=false;
-    outer:for(const m of mv)for(const r of rectsOf(m))for(const w of walls){
+    outer:for(const m of mv)for(const r of inkRects(m))for(const w of walls){
       if(!hit(r,w))continue;
       const c=[[w.x-(r.x+r.w),0],[w.x+w.w-r.x,0],[0,w.y-(r.y+r.h)],[0,w.y+w.h-r.y]].sort((a,b)=>Math.abs(a[0]+a[1])-Math.abs(b[0]+b[1]))[0];
       its.filter(i=>set.has(i.id)).forEach(i=>{i.x+=c[0];i.y+=c[1]});moved=true;break outer;
@@ -1875,7 +1892,7 @@ function settle(set){
   }
   /* 벽에 14 이내로 가까우면 바로 옆에 맞물리게 붙임 */
   let best=null;
-  for(const m of mv)for(const r of rectsOf(m))for(const w of walls){
+  for(const m of mv)for(const r of inkRects(m))for(const w of walls){
     const yo=r.y<w.y+w.h&&r.y+r.h>w.y,xo=r.x<w.x+w.w&&r.x+r.w>w.x;
     [[yo,r.x-(w.x+w.w),-1,0],[yo,w.x-(r.x+r.w),1,0],[xo,r.y-(w.y+w.h),0,-1],[xo,w.y-(r.y+r.h),0,1]].forEach(([ok,g,sx,sy])=>{if(ok&&g>0&&g<=14&&(!best||g<best.g))best={g,sx,sy}});
   }
@@ -1916,21 +1933,69 @@ function olCut(O,s0,cum){
   inner.sort((x,y)=>dir*(x-y));
   const full=len>=P-1,ss=[a,...inner,...(full?[]:[b])];
   return{pts:ss.map(s=>olAt(O,s)),closed:full}}
-function startTrace(it,p){const O=shapeOutline(it);if(!O){return false}
-  const s0=olProj(O,p);hdrag={t:"trace",it,O,p0:p,s0,sp:s0,cum:0,moved:false};attach();return true}
+/* 도형 외곽 그래프: 붙어 있는(겹치거나 맞닿은) 도형들의 외곽선을 하나의 선 네트워크로 보고, 꺾이는 곳·만나는 곳에서 다른 도형 쪽으로 이어서 따라 그림 */
+function buildTG(){
+  const W=CWf(),H=CHf(),segs=[];
+  IT().filter(i=>SHAPEK.has(i.kind)&&!(i.w>=W*.95&&i.h>=H*.95)).forEach(i=>{const O=shapeOutline(i);if(!O)return;for(let k=0;k<O.n;k++){const a=O.pts[k],b=O.pts[(k+1)%O.n];if(Math.hypot(b[0]-a[0],b[1]-a[1])>.3)segs.push([a,b])}});
+  const nodes=[],grid=new Map(),TOL=1.6,gk=(x,y)=>Math.floor(x/4)+","+Math.floor(y/4);
+  const nid=(x,y)=>{const cx=Math.floor(x/4),cy=Math.floor(y/4);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){const l=grid.get((cx+i)+","+(cy+j));if(l)for(const id of l)if(Math.hypot(nodes[id][0]-x,nodes[id][1]-y)<TOL)return id}
+    const id=nodes.length;nodes.push([x,y]);const k=gk(x,y);(grid.get(k)||grid.set(k,[]).get(k)).push(id);return id};
+  const edges=[],seen=new Set(),adj=[];
+  segs.forEach(([a,b],i)=>{
+    const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy,ts=[0,1];
+    segs.forEach(([c,d],j)=>{if(i===j)return;
+      const ex=d[0]-c[0],ey=d[1]-c[1],den=dx*ey-dy*ex;
+      if(Math.abs(den)>1e-9){const t=((c[0]-a[0])*ey-(c[1]-a[1])*ex)/den,u=((c[0]-a[0])*dy-(c[1]-a[1])*dx)/den;if(t>0&&t<1&&u>=-.002&&u<=1.002)ts.push(t)}
+      [c,d].forEach(q=>{const t=((q[0]-a[0])*dx+(q[1]-a[1])*dy)/L2;if(t>0&&t<1){const px=a[0]+dx*t,py=a[1]+dy*t;if(Math.hypot(q[0]-px,q[1]-py)<TOL)ts.push(t)}})});
+    ts.sort((x,y)=>x-y);
+    for(let k=0;k<ts.length-1;k++){if(ts[k+1]-ts[k]<1e-6)continue;
+      const u=nid(a[0]+dx*ts[k],a[1]+dy*ts[k]),v=nid(a[0]+dx*ts[k+1],a[1]+dy*ts[k+1]);if(u===v)continue;
+      const key=u<v?u+"_"+v:v+"_"+u;if(seen.has(key))continue;seen.add(key);edges.push([u,v])}});
+  nodes.forEach(()=>adj.push([]));edges.forEach(([u,v],i)=>{const w=Math.hypot(nodes[u][0]-nodes[v][0],nodes[u][1]-nodes[v][1]);adj[u].push([v,w]);adj[v].push([u,w])});
+  return{nodes,edges,adj}}
+function tgNear(G,p,lim){const r=[];G.edges.forEach(([u,v],i)=>{const a=G.nodes[u],b=G.nodes[v],dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy||1,t=Math.max(0,Math.min(1,((p.x-a[0])*dx+(p.y-a[1])*dy)/l2)),q=[a[0]+dx*t,a[1]+dy*t],d=Math.hypot(p.x-q[0],p.y-q[1]);if(d<=lim)r.push({e:i,t,q,d})});return r.sort((x,y)=>x.d-y.d)}
+function tgDij(G,s){const n=G.nodes.length,D=new Array(n).fill(1e9),pr=new Array(n).fill(-1),done=new Array(n).fill(false);D[s]=0;
+  for(let it=0;it<n;it++){let u=-1;for(let i=0;i<n;i++)if(!done[i]&&(u<0||D[i]<D[u]))u=i;if(u<0||D[u]>=1e9)break;done[u]=true;G.adj[u].forEach(([v,w])=>{if(D[u]+w<D[v]){D[v]=D[u]+w;pr[v]=u}})}
+  return{D,pr}}
+/* 현재 위치(h)에서 목표(g)까지 그래프를 따라 가는 점 목록과 거리 */
+function tgPath(G,h,g){
+  if(h.e===g.e)return{len:Math.hypot(h.q[0]-g.q[0],h.q[1]-g.q[1]),pts:[]};
+  const he=G.edges[h.e],ge=G.edges[g.e];let best=null;
+  he.forEach(a=>{const R=tgDij(G,a),da=Math.hypot(h.q[0]-G.nodes[a][0],h.q[1]-G.nodes[a][1]);
+    ge.forEach(b=>{if(R.D[b]>=1e9)return;const len=da+R.D[b]+Math.hypot(g.q[0]-G.nodes[b][0],g.q[1]-G.nodes[b][1]);
+      if(!best||len<best.len){const ch=[];for(let x=b;x!==-1;x=R.pr[x])ch.push(x);ch.reverse();best={len,pts:ch.map(i=>G.nodes[i])}}})});
+  return best}
+function tgClean(P){let ch=true;while(ch){ch=false;
+  for(let i=1;i<P.length-1;i++){const a=P[i-1],b=P[i],c=P[i+1],x1=b[0]-a[0],y1=b[1]-a[1],x2=c[0]-b[0],y2=c[1]-b[1],l1=Math.hypot(x1,y1),l2=Math.hypot(x2,y2);
+    if(l1<.4||l2<.4){P.splice(i,1);ch=true;break}
+    const cr=(x1*y2-y1*x2)/(l1*l2),dt=(x1*x2+y1*y2)/(l1*l2);
+    if(Math.abs(cr)<.012&&(dt>0||dt<-.98)){P.splice(i,1);ch=true;break}}}
+  return P}
+function startTrace(it,p,lim){const G=buildTG();if(!G.edges.length)return false;
+  const c=tgNear(G,p,lim||1e9)[0];if(!c)return false;
+  hdrag={t:"trace",it,G,p0:p,moved:false,head:c,P:[c.q.slice(),c.q.slice()],s0:c.q.slice(),closed:false};attach();return true}
 function traceMove(p){const d=hdrag;if(!d.moved){if(Math.hypot(p.x-d.p0.x,p.y-d.p0.y)<DZ())return;d.moved=true}
-  const s=olProj(d.O,p);let dl=s-d.sp;const P=d.O.P;if(dl>P/2)dl-=P;else if(dl<-P/2)dl+=P;d.cum+=dl;d.sp=s;
-  renderHouse();const c=olCut(d.O,d.s0,d.cum),hs=$("#hsvg");if(hs&&c.pts.length>1){hs.insertAdjacentHTML("beforeend",`<${c.closed?"polygon":"polyline"} id="trc" points="${c.pts.map(q=>q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ")}" fill="none" stroke="#6b5bd6" stroke-opacity=".75" stroke-width="8" stroke-linejoin="miter" pointer-events="none"/>`)}}
+  const G=d.G,cs=tgNear(G,p,46);if(cs.length){
+    const near=cs.filter(c=>c.d<=cs[0].d+7).slice(0,8);let pick=null;
+    near.forEach(c=>{const r=tgPath(G,d.head,c);if(!r)return;const sc=c.d+r.len*.35;if(!pick||sc<pick.sc)pick={c,r,sc}});
+    if(pick){const P=d.P;P.pop();P.push(...pick.r.pts.map(q=>q.slice()),pick.c.q.slice());
+      /* 맨 끝이 이전 머리와 같은 선분 위로 되돌아오는 경우 정리 */
+      d.P=tgClean([d.s0.slice(),...P.slice(1)]);if(d.P.length<2)d.P=[d.s0.slice(),pick.c.q.slice()];d.head=pick.c}}
+  const hp=d.P[d.P.length-1];let len=0;for(let i=1;i<d.P.length;i++)len+=Math.hypot(d.P[i][0]-d.P[i-1][0],d.P[i][1]-d.P[i-1][1]);
+  d.closed=len>40&&Math.hypot(hp[0]-d.s0[0],hp[1]-d.s0[1])<3;
+  renderHouse();const hs=$("#hsvg"),pts=d.closed?d.P.slice(0,-1):d.P;
+  if(hs&&pts.length>1)hs.insertAdjacentHTML("beforeend",`<${d.closed?"polygon":"polyline"} id="trc" points="${pts.map(q=>q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ")}" fill="none" stroke="#6b5bd6" stroke-opacity=".75" stroke-width="8" stroke-linejoin="miter" pointer-events="none"/>`)}
 function traceEnd(d){
-  if(!d.moved||Math.abs(d.cum)<10){const it=d.it;hsel.has(it.id)?pick(it,false):pick(it,true);renderHouse();return}
-  const c=olCut(d.O,d.s0,d.cum);if(c.pts.length<2)return renderHouse();
-  const xs=c.pts.map(q=>q[0]),ys=c.pts.map(q=>q[1]),bx=Math.min(...xs)-4,by=Math.min(...ys)-4,bw=Math.max(...xs)-Math.min(...xs)+8,bh=Math.max(...ys)-Math.min(...ys)+8;
-  const w={id:gid(),kind:"wpath",x:bx,y:by,w:bw,h:bh,dw:bw,dh:bh,pts:c.pts.map(q=>[(q[0]-bx)/bw,(q[1]-by)/bh]),cl:c.closed};
-  IT().push(w);hsel=new Set([w.id]);commit();toast(c.closed?"도형 외곽을 따라 벽을 만들었어요":"외곽을 따라 벽을 만들었어요. 끝까지 한 바퀴 돌면 닫혀요")}
+  let len=0;for(let i=1;i<(d.P||[]).length;i++)len+=Math.hypot(d.P[i][0]-d.P[i-1][0],d.P[i][1]-d.P[i-1][1]);
+  if(!d.moved||len<10){const it=d.it;if(it)hsel.has(it.id)?pick(it,false):pick(it,true);renderHouse();return}
+  const pts=d.closed?d.P.slice(0,-1):d.P;if(pts.length<2)return renderHouse();
+  const xs=pts.map(q=>q[0]),ys=pts.map(q=>q[1]),bx=Math.min(...xs)-4,by=Math.min(...ys)-4,bw=Math.max(...xs)-Math.min(...xs)+8,bh=Math.max(...ys)-Math.min(...ys)+8;
+  const w={id:gid(),kind:"wpath",x:bx,y:by,w:bw,h:bh,dw:bw,dh:bh,pts:pts.map(q=>[(q[0]-bx)/bw,(q[1]-by)/bh]),cl:d.closed};
+  IT().push(w);hsel=new Set([w.id]);commit();toast(d.closed?"도형 외곽을 따라 벽을 만들었어요":"외곽을 따라 벽을 만들었어요. 붙어 있는 도형으로도 이어서 그릴 수 있어요")}
 
 /* Shift + 도형 위: 연필 커서 */
 (function(){let sh=false,ov=null;const upd=()=>{const h=document.querySelector("#hsvg");if(!h)return;
-  const on=(sh&&ov&&SHAPEK.has(ov.kind))||(hdrag&&hdrag.t==="trace");h.classList.toggle("pen",!!on)};
+  const on=(sh&&(!ov||SHAPEK.has(ov.kind)))||(hdrag&&hdrag.t==="trace");h.classList.toggle("pen",!!on)};
   document.addEventListener("keydown",e=>{if(e.key==="Shift"){sh=true;upd()}});
   document.addEventListener("keyup",e=>{if(e.key==="Shift"){sh=false;upd()}});
   window.addEventListener("blur",()=>{sh=false;upd()});
@@ -2030,15 +2095,18 @@ const brIcon=k=>{const it={id:"ic"+k,nt:k,tv:{stone:1,bush:0,fbush:0}[k],seed:{s
   return`<svg viewBox="-4 -4 40 40" style="width:100%;height:100%">${k==="rust"||k==="moss"?'<rect x="1" y="6" width="30" height="24" rx="3" fill="#e6e1d6" stroke="#212121" stroke-width="1"/>':""}${b}</svg>`};
 const brPanel=()=>`<div class="ks">Nature Brush</div><div class="tg">${BR.map(b=>`<div class="tk${hbr===b[0]?" on":""}" data-br="${b[0]}" title="${b[2]}">${brIcon(b[0])}<span>${b[2]}</span></div>`).join("")}</div>`+(hbr?`<div class="bopt"><div><b>${BR.find(b=>b[0]===hbr)[2]} 브러시</b> · 캔버스에서 누른 채 움직이세요 (Esc로 종료)</div><label>크기 <input type="range" min="12" max="140" value="${hbo.size}" data-bo="size"></label><label>밀도 <input type="range" min="0" max="100" value="${hbo.dens}" data-bo="dens"></label><button class="s" data-bclr>선택한 개체의 녹·이끼 지우기</button></div>`:"");
 
+function dragCur(c){let e=document.getElementById("dragcur");if(!c){if(e)e.remove();return}if(!e){e=document.createElement("style");e.id="dragcur";document.head.appendChild(e)}e.textContent="#hsvg, #hsvg *{cursor:"+c+" !important}"}
+function startRotH(p){const ss=selItems().filter(canRot);if(!ss.length)return;const bx=bbox(ss),c={x:bx.x+bx.w/2,y:bx.y+bx.h/2};
+  hdrag={t:"rotz",h:1,p0:p,c,a0:Math.atan2(p.y-c.y,p.x-c.x),o:ss.map(i=>({i,x:i.x,y:i.y,w:i.w,h:i.h,dw:i.dw,dh:i.dh,rot:i.rot||0}))};dragCur(ROTCUR);attach()}
 function startMove(p){hdrag={t:"move",p0:p,o:selItems().map(i=>({i,x:i.x,y:i.y}))};attach()}
-function startSize(c,p){const s=selItems();hdrag={t:"size",c,b:bbox(s),o:s.map(i=>({i,x:i.x,y:i.y,w:i.w,h:i.h}))};attach()}
+function startSize(c,p){dragCur(c==="nw"||c==="se"?"nwse-resize":"nesw-resize");const s=selItems();hdrag={t:"size",c,b:bbox(s),o:s.map(i=>({i,x:i.x,y:i.y,w:i.w,h:i.h,dw:i.dw,dh:i.dh}))};attach()}
 const DZ=()=>{const r=document.querySelector("#hsvg").getBoundingClientRect();return 9/Math.max(.2,r.width/CWf())};
 function dmove(e){
   if(!hdrag)return;const p=pt(e);
   if(hdrag.t==="cv"){const d=hdrag,sn=v=>Math.round(v/10)*10,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
     const nw=cl(sn(d.W0+(d.c.includes("e")?1:-1)*(e.clientX-d.x0)/d.k),400,4000),nh=cl(sn(d.H0+(d.c.includes("s")?1:-1)*(e.clientY-d.y0)/d.k),300,3000);
     D.house.cw=nw;D.house.ch=nh;const sx=d.c.includes("w")?nw-d.W0:0,sy=d.c.includes("n")?nh-d.H0:0;d.o.forEach(o=>{o.i.x=o.x+sx;o.i.y=o.y+sy});d.moved=true;rqHouse();return}
-  if(hdrag.t==="rotz"){const d=hdrag;if(!d.moved&&Math.hypot(p.x-d.p0.x,p.y-d.p0.y)<DZ())return;d.moved=true;let a=(Math.atan2(p.y-d.c.y,p.x-d.c.x)-d.a0)*180/Math.PI;const sn=Math.round(a/30)*30;d.o.forEach(o=>{const i=o.i;i.x=o.x;i.y=o.y;i.w=o.w;i.h=o.h;i.dw=o.dw;i.dh=o.dh;if(o.rot)i.rot=o.rot;else delete i.rot;setRot(i,(((o.rot+sn)%360)+360)%360)});d.snap=sn;rqHouse();return}
+  if(hdrag.t==="rotz"){const d=hdrag;if(!d.moved&&Math.hypot(p.x-d.p0.x,p.y-d.p0.y)<DZ())return;d.moved=true;let a=(Math.atan2(p.y-d.c.y,p.x-d.c.x)-d.a0)*180/Math.PI;const sn=(e.shiftKey||!d.h)?Math.round(a/30)*30:Math.round(a);d.o.forEach(o=>{const i=o.i;i.x=o.x;i.y=o.y;i.w=o.w;i.h=o.h;i.dw=o.dw;i.dh=o.dh;if(o.rot)i.rot=o.rot;else delete i.rot;setRot(i,(((o.rot+sn)%360)+360)%360)});d.snap=sn;rqHouse();return}
   if(hdrag.t==="trace")return traceMove(p);
   if(hdrag.t==="br")return brMove(p);
   if(hdrag.t==="move"){let dx=p.x-hdrag.p0.x,dy=p.y-hdrag.p0.y;if(!hdrag.moved){if(Math.hypot(dx,dy)<DZ())return;hdrag.moved=true}const o0=hdrag.o[0];if(o0&&!e.altKey){if(isPx()&&PXL.byK(o0.i.kind)){const q=pxSnap(o0.i,o0.x+dx,o0.y+dy);dx=q[0]-o0.x;dy=q[1]-o0.y}else{const g2=v=>Math.round(v/2)*2;dx=g2(o0.x+dx)-o0.x;dy=g2(o0.y+dy)-o0.y}}hdrag.o.forEach(o=>{o.i.x=o.x+dx;o.i.y=o.y+dy})}
@@ -2046,7 +2114,7 @@ function dmove(e){
     const b=hdrag.b,ax=hdrag.c.includes("w")?b.x+b.w:b.x,ay=hdrag.c.includes("n")?b.y+b.h:b.y;hdrag.moved=true;if(!e.shiftKey){p.x=sn(p.x,e);p.y=sn(p.y,e)}
     let x1=Math.min(p.x,ax),x2=Math.max(p.x,ax),y1=Math.min(p.y,ay),y2=Math.max(p.y,ay);
     x2=Math.max(x2,x1+10);y2=Math.max(y2,y1+10);
-    if(e.shiftKey){const k=Math.max((x2-x1)/(b.w||1),(y2-y1)/(b.h||1)),nw=Math.max(10,b.w*k),nh=Math.max(10,b.h*k);if(hdrag.c.includes("w")){x1=ax-nw;x2=ax}else{x1=ax;x2=ax+nw}if(hdrag.c.includes("n")){y1=ay-nh;y2=ay}else{y1=ay;y2=ay+nh}}
+    if(e.shiftKey){const o1=hdrag.o.length===1?hdrag.o[0]:null,R=o1&&o1.dw>0&&o1.dh>0?o1.dw/o1.dh:(b.w||1)/(b.h||1),W0=x2-x1,H0=y2-y1;let nw,nh;if(W0/R>=H0){nw=Math.max(10,W0);nh=nw/R}else{nh=Math.max(10,H0);nw=nh*R}nw=Math.max(nw,10);nh=Math.max(nh,10);if(hdrag.c.includes("w")){x1=ax-nw;x2=ax}else{x1=ax;x2=ax+nw}if(hdrag.c.includes("n")){y1=ay-nh;y2=ay}else{y1=ay;y2=ay+nh}}
     const sx=(x2-x1)/(b.w||1),sy=(y2-y1)/(b.h||1);
     hdrag.o.forEach(o=>{o.i.x=x1+(o.x-b.x)*sx;o.i.y=y1+(o.y-b.y)*sy;o.i.w=Math.max(4,o.w*sx);o.i.h=Math.max(4,o.h*sy)});
   }else hdrag.p1=p;
@@ -2056,16 +2124,19 @@ function dmove(e){
 }
 /* 성능: 가구 이동 중에는 SVG 전체를 다시 만들지 않고 이동한 가구의 위치와 선택 테두리만 갱신 (요소를 못 찾으면 전체 갱신으로 대체) */
 function fastMove(){
-  if(_rq)return false;const hs=$("#hsvg"),o=hdrag.o,cs=hs.querySelectorAll("circle[data-h]");if(cs.length!==4||!o.length)return false;
+  if(_rq)return false;const hs=$("#hsvg"),o=hdrag.o,hh=hs.querySelectorAll("[data-h],[data-hh]");if(!o.length||!hh.length)return false;
   const gs=[];for(const q of o){const g=hs.querySelector('[data-id="'+String(q.i.id).replace(/["\\]/g,"\\$&")+'"]');if(!g||g.parentNode!==hs)return false;gs.push(g)}
-  const r=cs[0].previousElementSibling;if(!r||r.tagName!=="rect"||r.getAttribute("stroke")!=="#8b6fd6")return false;
+  const r=hs.querySelector(".selr");if(!r)return false;
   o.forEach((q,k)=>gs[k].setAttribute("transform","translate("+q.i.x+" "+q.i.y+")"));
-  const b=bbox(selItems());r.setAttribute("x",b.x);r.setAttribute("y",b.y);r.setAttribute("width",b.w);r.setAttribute("height",b.h);
-  [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]].forEach((c,k)=>{cs[k].setAttribute("cx",c[0]);cs[k].setAttribute("cy",c[1])});return true}
+  const b=bbox(selItems()),sc=(hs.clientWidth||CWf())/CWf(),RO=24/sc;r.setAttribute("x",b.x);r.setAttribute("y",b.y);r.setAttribute("width",b.w);r.setAttribute("height",b.h);
+  const P={nw:[b.x,b.y],ne:[b.x+b.w,b.y],sw:[b.x,b.y+b.h],se:[b.x+b.w,b.y+b.h],rot:[b.x+b.w/2,b.y-RO]};
+  hh.forEach(c=>{const q=P[c.dataset.h||c.dataset.hh];if(q){c.setAttribute("cx",q[0]);c.setAttribute("cy",q[1])}});
+  const l=hs.querySelector(".rotl");if(l){l.setAttribute("x1",b.x+b.w/2);l.setAttribute("x2",b.x+b.w/2);l.setAttribute("y1",b.y);l.setAttribute("y2",b.y-RO)}
+  return true}
 function dend(){
-  window.removeEventListener("pointermove",dmove);const d=hdrag;hdrag=null;if(!d)return;
+  window.removeEventListener("pointermove",dmove);const d=hdrag;hdrag=null;dragCur(null);if(!d)return;
   if(d.t==="cv"){$("#hsvg").style.cursor="";if(d.moved)commit();else renderHouse();return}
-  if(d.t==="rotz"){if(d.moved)commit();else{const q=find(d.tid);if(q)pick(q,false);renderHouse()}return}
+  if(d.t==="rotz"){if(d.moved)commit();else{if(!d.h){const q=find(d.tid);if(q)pick(q,false)}renderHouse()}return}
   if(d.t==="trace")return traceEnd(d);
   if(d.t==="br")return brEnd(d);
   if(d.t==="marq"){
@@ -2090,13 +2161,16 @@ function cornerAt(e){const r=$("#hsvg").getBoundingClientRect(),z=22,x=e.clientX
   if(x<-4||y<-4||x>r.width+4||y>r.height+4)return null;return tp&&l?"nw":tp&&rt?"ne":b&&l?"sw":b&&rt?"se":null}
 const curOf=c=>c?(c==="nw"||c==="se"?"nwse-resize":"nesw-resize"):"";
 function startCanvas(c,e){const hs=$("#hsvg"),r=hs.getBoundingClientRect();hdrag={t:"cv",c,x0:e.clientX,y0:e.clientY,W0:CWf(),H0:CHf(),k:r.width/CWf(),o:IT().map(i=>({i,x:i.x,y:i.y}))};hs.style.cursor=curOf(c);attach()}
+const ROTCUR=`url('data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 23A10 10 0 1 1 25 22"/><path d="M26 14l-1 8-8-2"/></g><g fill="none" stroke="#27ae60" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 23A10 10 0 1 1 25 22"/><path d="M26 14l-1 8-8-2"/></g></svg>')}') 16 16, grab`;
 function overlay(){
   const sc=($("#hsvg").clientWidth||CWf())/CWf(),r=6/sc;let o="";
   const s=selItems();
   if(s.length&&!(hdrag&&hdrag.t==="marq")){
     const b=bbox(s);
-    o+=`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#8b6fd6" stroke-width="${1.5/sc}" pointer-events="none"/>`;
-    [["nw",b.x,b.y],["ne",b.x+b.w,b.y],["sw",b.x,b.y+b.h],["se",b.x+b.w,b.y+b.h]].forEach(([c,x,y])=>{o+=`<circle data-h="${c}" cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="#8b6fd6" stroke-width="${1.5/sc}" style="cursor:nwse-resize"/>`});
+    const lock=s.some(genRot),RO=24/sc;
+    o+=`<rect class="selr" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="none" stroke="#8b6fd6" stroke-width="${1.5/sc}" pointer-events="none"/>`;
+    if(!lock)[["nw",b.x,b.y],["ne",b.x+b.w,b.y],["sw",b.x,b.y+b.h],["se",b.x+b.w,b.y+b.h]].forEach(([c,x,y])=>{const cu=c==="nw"||c==="se"?"nwse-resize":"nesw-resize";o+=`<circle data-hh="${c}" cx="${x}" cy="${y}" r="${13/sc}" fill="transparent" style="cursor:${cu}"/><circle data-h="${c}" cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="#8b6fd6" stroke-width="${1.5/sc}" style="cursor:${cu}"/>`});
+    if(s.some(canRot)&&!isPx())o+=`<line class="rotl" x1="${b.x+b.w/2}" y1="${b.y}" x2="${b.x+b.w/2}" y2="${b.y-RO}" stroke="#8b6fd6" stroke-width="${1.5/sc}" pointer-events="none"/><circle data-hh="rot" cx="${b.x+b.w/2}" cy="${b.y-RO}" r="${13/sc}" fill="transparent" style="cursor:${ROTCUR}"/><circle data-h="rot" cx="${b.x+b.w/2}" cy="${b.y-RO}" r="${r}" fill="#fff" stroke="#8b6fd6" stroke-width="${1.5/sc}" style="cursor:${ROTCUR}"/>`;
   }
   if(hdrag&&hdrag.t==="marq"&&hdrag.p1){const d=hdrag;o+=`<rect x="${Math.min(d.p0.x,d.p1.x)}" y="${Math.min(d.p0.y,d.p1.y)}" width="${Math.abs(d.p0.x-d.p1.x)}" height="${Math.abs(d.p0.y-d.p1.y)}" fill="#8b6fd6" fill-opacity=".12" stroke="#8b6fd6" stroke-dasharray="4" pointer-events="none"/>`}
   return o;
@@ -2115,7 +2189,7 @@ function toolbar(){
   const more=(isPx()?"":T("front","이미지 앞으로 오게 하기")+T("back","이미지 뒤로 오게 하기")+(s.every(i=>PXK.has(i.kind))?"":T("color","색 수정"))+(canParts?T("parts","싱크·가스레인지 교체"):"")+(canSwap?T("swap","다른 가구로 교체"):""));
   tb.innerHTML=(isPx()?B("fh","방향 바꾸기 (좌우 반전)","fh"):s.some(canRot)?B("rot","시계 방향 90° 회전","rot")+B("fh","좌우 반전","fh")+B("fv","상하 반전","fv"):"")+(s.length>1&&!same?B("group","그룹화","group"):"")+(hasG?B("ungroup","그룹화 해제","ungroup"):"")+potRow+(more?`<button class="tbb${tbMore?" on":""}" data-act="more" title="더보기" aria-label="더보기" style="font-size:18px;font-weight:700">⋯</button>`+(tbMore?`<div class="tbm">${more}</div>`:""):"");
   tb.style.display="flex";
-  const top=b.y*sc-52;
+  const top=b.y*sc-70;
   tb.style.left=Math.max(90,Math.min((b.x+b.w/2)*sc,hs.clientWidth-90))+"px";
   tb.style.top=(top<4?(b.y+b.h)*sc+12:top)+"px";
 }
@@ -2282,8 +2356,9 @@ $("#hsvg").addEventListener("pointerleave",e=>{if(!hdrag)e.currentTarget.style.c
 $("#hsvg").onpointerdown=e=>{
   {const cv=cornerAt(e);if(cv){e.preventDefault();return startCanvas(cv,e)}}
   if(hbr&&!isPx()){e.preventDefault();return brStart(pt(e))}
-  const p=pt(e),h=e.target.closest("[data-h]"),t=e.target.closest("[data-id]");
-  if(h){e.preventDefault();return startSize(h.dataset.h,p)}
+  const p=pt(e),h=e.target.closest("[data-h],[data-hh]"),t=e.target.closest("[data-id]");
+  if(h){e.preventDefault();const k=h.dataset.h||h.dataset.hh;return k==="rot"?startRotH(p):startSize(k,p)}
+  if(!t&&e.shiftKey&&!isPx()&&!h){e.preventDefault();if(startTrace(null,p,60))return}
   if(t){
     const it=find(t.dataset.id),now=Date.now();
     if(lastTap.id===it.id&&now-lastTap.t<350&&it.kind.startsWith("label")){lastTap={};return editText(it)}
@@ -2659,19 +2734,14 @@ const SVH=(ox,oy)=>{const S=.62,X=v=>Math.round((v-ox)*S*10)/10,Y=v=>Math.round(
  stairs=(x1,y1,x2,y2,vert,n,c1,c2)=>{const o=[];for(let i=0;i<n;i++){const a=vert?[x1,y1+(y2-y1)*i/n,x2,y1+(y2-y1)*(i+1)/n]:[x1+(x2-x1)*i/n,y1,x1+(x2-x1)*(i+1)/n,y2];o.push(sh("rect",...a,i%2?c1:c2))}return o};
  return{S,X,Y,WH,WV,fl,sh,hx,dr,lb,stairs}};
 /* 사용자가 미리보기에서 직접 수정한 1층(레렌 1층) 배치 — 그대로 사용 */
-const SV1_DATA=[{"kind":"rect","x":0,"y":0,"w":660,"h":690,"fill":"#DAD7CC"},{"kind":"rect","x":69.8,"y":62.4,"w":186.9,"h":175.7,"fill":"#7E6552","tex":"wf"},{"kind":"rect","x":69.8,"y":234.1,"w":186.9,"h":119.4,"fill":"#8A7058","tex":"wf"},{"kind":"rect","x":69.8,"y":349.5,"w":384.1,"h":155.2,"fill":"#7F5F4C","tex":"wf"},{"kind":"rect","x":254.6,"y":149.2,"w":281.9,"h":201.5,"fill":"#A5AEA3","tex":"tl"},{"kind":"rect","x":449.9,"y":350.7,"w":86.6,"h":108.5,"fill":"#8E8D85","tex":"cn"},{"kind":"rect","x":497.6,"y":144.2,"w":82.3,"h":76,"fill":"#BDCBCB","tex":"tl"},{"kind":"rect","x":449.9,"y":459.2,"w":86.6,"h":111.6,"fill":"#babec4","tex":"cn"},{"kind":"rect","x":163.5,"y":500.7,"w":290.4,"h":75.3,"fill":"#97968D","tex":"cn"},{"kind":"wall","x":69.8,"y":60.4,"w":182.9,"h":12},{"kind":"wall","x":67.8,"y":62.4,"w":12,"h":55.8},{"kind":"dash","x":71.8,"y":118.2,"w":8,"h":68.2},{"kind":"wall","x":69.8,"y":234.1,"w":182.9,"h":8},{"kind":"wall","x":66.8,"y":180,"w":13.2,"h":320.7},{"kind":"wall","x":69.8,"y":349.5,"w":182.9,"h":8},{"kind":"wall","x":252.7,"y":62.4,"w":8,"h":86.8},{"kind":"wall","x":251.7,"y":190,"w":10,"h":110},{"kind":"wall","x":250.7,"y":328,"w":10,"h":29.5},{"kind":"wall","x":252.7,"y":147.2,"w":244.9,"h":12},{"kind":"wall","x":499.6,"y":142.2,"w":76.3,"h":12},{"kind":"wall","x":573.9,"y":144.2,"w":10,"h":75.8},{"kind":"wall","x":497.6,"y":208,"w":82.4,"h":16.2},{"kind":"wall","x":497.6,"y":144.2,"w":8,"h":36},{"kind":"wall","x":497.6,"y":211.2,"w":8,"h":5},{"kind":"wall","x":530.5,"y":216.2,"w":12,"h":243},{"kind":"wall","x":453.9,"y":456.2,"w":20.1,"h":12.8},{"kind":"wall","x":518,"y":459.2,"w":15.5,"h":8},{"kind":"wall","x":447.9,"y":421,"w":11.1,"h":159},{"kind":"wall","x":69.8,"y":500.7,"w":147.6,"h":8},{"kind":"wall","x":279.4,"y":500.7,"w":170.5,"h":8},{"kind":"dash","x":217.4,"y":500.7,"w":62,"h":8},{"kind":"wall","x":163.5,"y":500.7,"w":8,"h":71.3},{"kind":"wall","x":163.5,"y":572,"w":10.5,"h":8},{"kind":"wall","x":440.6,"y":572,"w":9.3,"h":8},{"kind":"dash","x":174,"y":572,"w":266.6,"h":8},{"kind":"wall","x":530.5,"y":459.2,"w":12,"h":112.8},{"kind":"wall","x":515,"y":572,"w":15.5,"h":12},{"kind":"doorR","x":215.5,"y":157.2,"w":37.2,"h":37.2,"rot":270,"fx":true},{"kind":"door","x":505.6,"y":180.2,"w":31,"h":31,"rot":90},{"kind":"doorR","x":469.4,"y":467.2,"w":49.6,"h":49.6,"rot":180},{"kind":"door","x":465.4,"y":522.4,"w":49.6,"h":49.6},{"kind":"labelA","x":149.2,"y":191.3,"w":32,"h":18,"text":"서재"},{"kind":"ho_ep_222","x":100,"y":242.1,"w":131.9,"h":101.2,"fill":"#ffffff","sub":"#efebe0"},{"kind":"ho_mug","x":165.3,"y":287.4,"w":11.2,"h":8.7,"fill":"#9A5745"},{"kind":"labelA","x":90.9,"y":239.6,"w":32,"h":18,"text":"식당"},{"kind":"ho_oriental_carpet","x":122.5,"y":388.9,"w":117.8,"h":82.5,"fill":"#8C6F5F"},{"kind":"ho_2_modern_tv_units_2","x":79.9,"y":384.5,"w":17,"h":71.3,"rot":270,"fill":"#6E4A38","tex":"wg1"},{"kind":"ho_old_tv","x":76.6,"y":411.7,"w":23.6,"h":16.8,"rot":270,"fill":"#5E5F58"},{"kind":"ho_ep_088","x":180,"y":460,"w":22.3,"h":22.3,"fill":"#826047","tex":"wg2"},{"kind":"rect","x":418.9,"y":462.3,"w":26.7,"h":31,"fill":"#8B8A82","tex":"cn"},{"kind":"labelA","x":251.5,"y":428.1,"w":32,"h":18,"text":"거실"},{"kind":"ho_vintage_french_sideboard","x":401.6,"y":152.2,"w":101,"h":39.8,"fill":"#4F7773"},{"kind":"ho_ep_095","x":294.9,"y":356.9,"w":18.6,"h":18.6,"fill":"#b1674e"},{"kind":"ho_ep_095","x":325.9,"y":356.9,"w":18.6,"h":18.6,"fill":"#b1674e"},{"kind":"ho_old_refrigerator","x":260.7,"y":200,"w":35.1,"h":57,"rot":90,"fill":"#D6D3C4","fy":true},{"kind":"labelA","x":316.6,"y":248.3,"w":32,"h":18,"text":"주방"},{"kind":"ho_crossover_stairs","x":489.8,"y":217.7,"w":42.7,"h":191,"rot":90,"fill":"#9A7A63"},{"kind":"labelA","x":495.2,"y":313.4,"w":30,"h":18,"text":"계단"},{"kind":"ho_ep_069","x":474,"y":440.9,"w":46.5,"h":17.7,"fill":"#9A5745","rot":90},{"kind":"labelA","x":480,"y":420,"w":32,"h":18,"text":"현관"},{"kind":"labelA","x":472.8,"y":545.9,"w":32,"h":18,"text":"입구"},{"kind":"ho_ep_103","x":512.7,"y":151.7,"w":17,"h":23.6},{"kind":"ho_semi_recessed_basin","x":550.1,"y":152.2,"w":24.8,"h":24.6,"rot":90,"fill":"#f0f5f3"},{"kind":"ho_shelf_with_bottles","x":563.3,"y":169,"w":9.9,"h":43.4,"rot":90},{"kind":"labelA","x":521.2,"y":199.9,"w":32,"h":18,"text":"욕실"},{"kind":"ho_minotti_lawson_dining_little_armchair","x":172.8,"y":506.1,"w":34.7,"h":37.2,"fill":"#efebe0","rot":270},{"kind":"ho_philodendron_selloum","x":412,"y":540,"w":37.9,"h":40.9,"fill":"#a6baa1"},{"kind":"labelA","x":360,"y":522.3,"w":40,"h":18,"text":"발코니"},{"kind":"ho_ep_091","x":277.3,"y":210.5,"w":181.6,"h":145.3,"rot":90,"fx":true},{"kind":"ho_minotti_lawson_dining_little_armchair","x":271.3,"y":527.4,"w":34.7,"h":37.2,"fill":"#efebe0","rot":90},{"kind":"ho_ep_p233","x":387.3,"y":557.4,"w":24.2,"h":24.2,"fill":"#81a479"},{"kind":"ho_ep_p306","x":171.5,"y":540,"w":54.4,"h":46.1,"fill":"#a6baa1"},{"kind":"ho_5_bedside_tables_2","x":458.5,"y":442.4,"w":16.2,"h":16.2},{"kind":"ho_ep_198","x":180,"y":364.5,"w":42.4,"h":92.7,"rot":90,"fill":"#babec4"},{"kind":"ho_ep_062","x":130,"y":453.2,"w":41.6,"h":38.5,"fill":"#babec4"},{"kind":"ho_writing_desk","x":99,"y":88.4,"w":108.1,"h":79.3,"rot":270},{"kind":"ho_bookshelf","x":70.8,"y":61.4,"w":150,"h":36.2,"fill":"#aca095","tex":"wg1"},{"kind":"ho_bookshelf","x":68.4,"y":198.8,"w":195.8,"h":47.3,"fill":"#aca095","tex":"wg1"},{"kind":"ho_rl_2_10","x":170,"y":130,"w":17.5,"h":19},{"kind":"ho_rl_2_04","x":219.7,"y":110,"w":33,"h":34},{"kind":"ho_rl_2_06","x":190,"y":170,"w":35,"h":30.1},{"kind":"ho_open_book","x":77.4,"y":170,"w":40,"h":29.3},{"kind":"ho_rl_2_08","x":100,"y":90,"w":36,"h":32.7},{"kind":"ho_rl_2_11","x":150,"y":143,"w":17.9,"h":22}];
+const SV1_DATA=[{"kind":"rect","x":69.8,"y":62.4,"w":186.9,"h":175.7,"fill":"#7E6552","tex":"wf"},{"kind":"rect","x":69.8,"y":234.1,"w":186.9,"h":119.4,"fill":"#8A7058","tex":"wf"},{"kind":"rect","x":69.8,"y":349.5,"w":384.1,"h":155.2,"fill":"#7F5F4C","tex":"wf"},{"kind":"rect","x":254.6,"y":149.2,"w":281.9,"h":201.5,"fill":"#A5AEA3","tex":"tl"},{"kind":"rect","x":449.9,"y":350.7,"w":86.6,"h":108.5,"fill":"#8E8D85","tex":"cn"},{"kind":"rect","x":497.6,"y":144.2,"w":82.3,"h":76,"fill":"#BDCBCB","tex":"tl"},{"kind":"rect","x":449.9,"y":459.2,"w":86.6,"h":111.6,"fill":"#babec4","tex":"cn"},{"kind":"rect","x":163.5,"y":500.7,"w":290.4,"h":75.3,"fill":"#97968D","tex":"cn"},{"kind":"dash","x":71.8,"y":118.2,"w":8,"h":68.2},{"kind":"wall","x":69.8,"y":234.1,"w":182.9,"h":8},{"kind":"wall","x":69.8,"y":349.5,"w":182.9,"h":8},{"kind":"wall","x":251.7,"y":190,"w":10,"h":110},{"kind":"wall","x":250.7,"y":328,"w":10,"h":29.5},{"kind":"wall","x":252.7,"y":147.2,"w":244.9,"h":12},{"kind":"wall","x":497.6,"y":211.2,"w":8,"h":5},{"kind":"wall","x":453.9,"y":456.2,"w":20.1,"h":12.8},{"kind":"wall","x":518,"y":459.2,"w":15.5,"h":8},{"kind":"wall","x":447.9,"y":421,"w":11.1,"h":159},{"kind":"wall","x":69.8,"y":500.7,"w":147.6,"h":8},{"kind":"wall","x":279.4,"y":500.7,"w":170.5,"h":8},{"kind":"dash","x":217.4,"y":500.7,"w":62,"h":8},{"kind":"wall","x":163.5,"y":500.7,"w":8,"h":71.3},{"kind":"wall","x":163.5,"y":572,"w":10.5,"h":8},{"kind":"wall","x":440.6,"y":572,"w":9.3,"h":8},{"kind":"dash","x":174,"y":572,"w":266.6,"h":8},{"kind":"doorR","x":215.5,"y":157.2,"w":37.2,"h":37.2,"rot":270,"fx":true},{"kind":"door","x":505.6,"y":180.2,"w":31,"h":31,"rot":90},{"kind":"doorR","x":469.4,"y":467.2,"w":49.6,"h":49.6,"rot":180},{"kind":"door","x":465.4,"y":522.4,"w":49.6,"h":49.6},{"kind":"labelA","x":149.2,"y":191.3,"w":32,"h":18,"text":"서재"},{"kind":"ho_ep_222","x":100,"y":242.1,"w":131.9,"h":101.2,"fill":"#ffffff","sub":"#efebe0"},{"kind":"ho_mug","x":165.3,"y":287.4,"w":11.2,"h":8.7,"fill":"#9A5745"},{"kind":"labelA","x":90.9,"y":239.6,"w":32,"h":18,"text":"식당"},{"kind":"ho_oriental_carpet","x":122.5,"y":388.9,"w":117.8,"h":82.5,"fill":"#8C6F5F"},{"kind":"ho_freestanding_fireplace_4","x":76.2,"y":384.5,"w":24.4,"h":71.3,"rot":270,"fill":"#6E4A38","tex":"wg1"},{"kind":"ho_ep_088","x":180,"y":460,"w":22.3,"h":22.3,"fill":"#826047","tex":"wg2"},{"kind":"rect","x":418.9,"y":462.3,"w":26.7,"h":31,"fill":"#8B8A82","tex":"cn"},{"kind":"labelA","x":251.5,"y":428.1,"w":32,"h":18,"text":"거실"},{"kind":"ho_vintage_french_sideboard","x":401.6,"y":152.2,"w":101,"h":39.8,"fill":"#4F7773"},{"kind":"ho_ep_095","x":294.9,"y":356.9,"w":18.6,"h":18.6,"fill":"#b1674e"},{"kind":"ho_ep_095","x":325.9,"y":356.9,"w":18.6,"h":18.6,"fill":"#b1674e"},{"kind":"ho_old_refrigerator","x":260.7,"y":200,"w":35.1,"h":57,"rot":90,"fill":"#D6D3C4","fy":true},{"kind":"labelA","x":316.6,"y":248.3,"w":32,"h":18,"text":"주방"},{"kind":"ho_wood_stair_straight","x":469.8,"y":217.7,"w":62.7,"h":168.8,"rot":90,"fill":"#9A7A63"},{"kind":"labelA","x":495.2,"y":313.4,"w":30,"h":18,"text":"계단"},{"kind":"ho_ep_069","x":474,"y":440.9,"w":46.5,"h":17.7,"fill":"#9A5745","rot":90},{"kind":"labelA","x":480,"y":420,"w":32,"h":18,"text":"현관"},{"kind":"labelA","x":472.8,"y":545.9,"w":32,"h":18,"text":"입구"},{"kind":"ho_ep_103","x":512.7,"y":151.7,"w":17,"h":23.6},{"kind":"ho_semi_recessed_basin","x":550.1,"y":152.2,"w":24.8,"h":24.6,"rot":90,"fill":"#f0f5f3"},{"kind":"ho_shelf_with_bottles","x":563.3,"y":169,"w":9.9,"h":43.4,"rot":90},{"kind":"labelA","x":521.2,"y":199.9,"w":32,"h":18,"text":"욕실"},{"kind":"ho_minotti_lawson_dining_little_armchair","x":172.8,"y":506.1,"w":34.7,"h":37.2,"fill":"#efebe0","rot":270},{"kind":"ho_philodendron_selloum","x":412,"y":540,"w":37.9,"h":40.9,"fill":"#a6baa1"},{"kind":"labelA","x":360,"y":522.3,"w":40,"h":18,"text":"발코니"},{"kind":"ho_ep_091","x":277.3,"y":210.5,"w":181.6,"h":145.3,"rot":90,"fx":true},{"kind":"ho_minotti_lawson_dining_little_armchair","x":271.3,"y":527.4,"w":34.7,"h":37.2,"fill":"#efebe0","rot":90},{"kind":"ho_ep_p233","x":387.3,"y":557.4,"w":24.2,"h":24.2,"fill":"#81a479"},{"kind":"ho_ep_p306","x":171.5,"y":540,"w":54.4,"h":46.1,"fill":"#a6baa1"},{"kind":"ho_5_bedside_tables_2","x":458.5,"y":442.4,"w":16.2,"h":16.2},{"kind":"ho_ep_198","x":180,"y":364.5,"w":42.4,"h":92.7,"rot":90,"fill":"#babec4"},{"kind":"ho_ep_062","x":130,"y":453.2,"w":41.6,"h":38.5,"fill":"#babec4"},{"kind":"ho_writing_desk","x":99,"y":88.4,"w":108.1,"h":79.3,"rot":270},{"kind":"ho_bookshelf","x":70.8,"y":61.4,"w":150,"h":36.2,"fill":"#aca095","tex":"wg1"},{"kind":"ho_bookshelf","x":68.4,"y":198.8,"w":195.8,"h":47.3,"fill":"#aca095","tex":"wg1"},{"kind":"ho_rl_2_10","x":170,"y":130,"w":17.5,"h":19},{"kind":"ho_rl_2_04","x":219.7,"y":110,"w":33,"h":34},{"kind":"ho_rl_2_06","x":190,"y":170,"w":35,"h":30.1},{"kind":"ho_open_book","x":77.4,"y":170,"w":40,"h":29.3},{"kind":"ho_rl_2_08","x":100,"y":90,"w":36,"h":32.7},{"kind":"ho_rl_2_11","x":150,"y":143,"w":17.9,"h":22},{"kind":"wpath","x":493.6,"y":216.2,"w":46.9,"h":358.6,"pts":[[0.4906174082056964,0.9888455103179029],[0.9147121535181236,0.9888455103179029],[0.9147121535181236,0.011154489682097046],[0.08528784648187637,0.011154489682097046]],"cl":false},{"kind":"wpath","x":493.6,"y":140.2,"w":90.3,"h":98.8,"pts":[[0.06158798217438772,0.09110860850004536],[0.04429678848283502,0.09110860850004536],[0.04429678848283502,0.04049271488890905],[0.955703211517165,0.04049271488890905],[0.955703211517165,0.809854297778181],[0.4750830564784053,0.809854297778181],[0.4750830564784053,0.959507285111091]],"cl":false},{"kind":"wpath","x":65.8,"y":58.4,"w":194.9,"h":94.8,"pts":[[0.9687018984094409,0.9578059071729957],[0.9794766546947152,0.9578059071729957],[0.9794766546947152,0.042194092827004225],[0.020523345305284765,0.042194092827004225],[0.020523345305284765,0.6458569449268137]],"cl":false},{"kind":"wpath","x":65.8,"y":176.1,"w":23.8,"h":332.6,"pts":[[0.1678713601465365,0.01202807791389958],[0.16787136014653709,0.9879719220861004],[0.8321286398534635,0.9879719220861004]],"cl":false}];
 const SV1=()=>SV1_DATA.map(i=>({id:gid(),...JSON.parse(JSON.stringify(i)),dw:i.w,dh:i.h}));
 /* 사용자가 미리보기에서 직접 수정한 2층(레렌) 배치 — 그대로 사용(여백·바닥 확장 처리 제외) */
-const SV2_DATA=[{"kind":"rect","x":0,"y":0,"w":620,"h":660,"fill":"#DAD7CC"},{"kind":"rect","x":69.8,"y":58.1,"w":219.9,"h":138.5,"fill":"#BDCBCB","tex":"tl"},{"kind":"rect","x":69.8,"y":192.6,"w":219.9,"h":211.7,"fill":"#86705A","tex":"wf"},{"kind":"rect","x":283.7,"y":58.1,"w":249.7,"h":346.2,"fill":"#7F5F4C","tex":"wf"},{"kind":"rect","x":69.8,"y":400.3,"w":219.9,"h":103.3,"fill":"#97968D","tex":"cn"},{"kind":"rect","x":195.7,"y":497.6,"w":86.8,"h":76.1,"fill":"#7E6552","tex":"wf"},{"kind":"rect","x":283.7,"y":400.3,"w":249.7,"h":173.4,"fill":"#8A7058","tex":"wf"},{"kind":"wall","x":69.8,"y":58.1,"w":457.6,"h":12},{"kind":"wall","x":69.8,"y":192.6,"w":213.9,"h":8},{"kind":"wall","x":69.8,"y":400.3,"w":54.6,"h":8},{"kind":"wall","x":236,"y":400.3,"w":46.5,"h":8},{"kind":"dash","x":124.4,"y":400.3,"w":111.6,"h":8},{"kind":"wall","x":69.8,"y":497.6,"w":212.7,"h":12},{"kind":"wall","x":67.8,"y":58.1,"w":12,"h":439.5},{"kind":"wall","x":195.7,"y":497.6,"w":12,"h":70.1},{"kind":"wall","x":195.7,"y":567.7,"w":331.7,"h":12},{"kind":"wall","x":283.7,"y":58.1,"w":12,"h":91.1},{"kind":"wall","x":283.7,"y":189.5,"w":12,"h":21.7},{"kind":"wall","x":283.7,"y":254.6,"w":12,"h":244.9},{"kind":"wall","x":283.7,"y":555.3,"w":12,"h":12.4},{"kind":"wall","x":527.4,"y":58.1,"w":12,"h":509.6},{"kind":"wall","x":283.7,"y":400.3,"w":11.2,"h":8},{"kind":"wall","x":358.9,"y":400.3,"w":170.5,"h":8},{"kind":"doorR","x":242.8,"y":149.2,"w":40.9,"h":40.9,"rot":270},{"kind":"door","x":240.3,"y":211.2,"w":43.4,"h":43.4,"rot":270},{"kind":"door","x":291.7,"y":499.5,"w":55.8,"h":55.8,"rot":90},{"kind":"doorR","x":294.9,"y":408.3,"w":62,"h":62,"rot":180},{"kind":"ho_ep_156","x":79.8,"y":70,"w":55,"h":117.8,"fill":"#f0f5f3"},{"kind":"ho_flush_valve_toilet","x":260.4,"y":68.1,"w":23.3,"h":46.4,"rot":0},{"kind":"labelA","x":180,"y":110,"w":32,"h":18,"text":"욕실"},{"kind":"labelA","x":170,"y":270,"w":32,"h":18,"text":"큰방"},{"kind":"labelA","x":155.4,"y":443.6,"w":40,"h":18,"text":"발코니"},{"kind":"ho_rl_5_01","x":420,"y":450,"w":24.8,"h":22.4},{"kind":"labelA","x":243,"y":530,"w":32,"h":18,"text":"옷장"},{"kind":"labelA","x":322.8,"y":121.2,"w":30,"h":18,"text":"계단"},{"kind":"ho_2_modern_tv_units_2","x":424.1,"y":164.7,"w":20.7,"h":86.8,"rot":90,"fill":"#6E4A38","tex":"wg1"},{"kind":"ho_old_tv","x":422,"y":199.3,"w":24.8,"h":17.7,"rot":90,"fill":"#5E5F58"},{"kind":"ho_ep_219","x":394.7,"y":276.8,"w":54.6,"h":52.4,"rot":180,"fill":"#788675"},{"kind":"ho_ep_p297b","x":490,"y":60.5,"w":29,"h":37.2},{"kind":"labelA","x":378.6,"y":229.7,"w":28,"h":18,"text":"홀"},{"kind":"ho_ep_291","x":414.7,"y":510,"w":114.7,"h":57.6,"rot":90,"fill":"#8a8a8a","sub":"#E3DACB"},{"kind":"labelA","x":353.8,"y":477.7,"w":28,"h":18,"text":"방"},{"kind":"ho_openable_wardrobe_1","x":220.4,"y":290.5,"w":70.3,"h":117.8,"rot":90,"fill":"#aca095","tex":"wg1"},{"kind":"ho_traditional_dresser","x":203.7,"y":505.6,"w":41.7,"h":65.7,"fy":true,"rot":90,"fill":"#aca095","tex":"wg2"},{"kind":"ho_bookcase_with_library_ladder","x":368.1,"y":257.1,"w":170.3,"h":153.2,"rot":180,"fill":"#aca095","tex":"wg1"},{"kind":"ho_half_pedestal_wash_basin","x":150,"y":151.7,"w":55,"h":43.9,"rot":180},{"kind":"ho_towel_holder","x":200,"y":178.8,"w":60,"h":20.8},{"kind":"ho_openable_wardrobe_1","x":420.6,"y":403.3,"w":117.8,"h":70.3,"rot":0,"fill":"#aca095","tex":"wg1"},{"kind":"ho_mid_century_desk_with_chair","x":105,"y":196.6,"w":75,"h":73.6},{"kind":"ho_rl_5_02","x":198.7,"y":363.6,"w":40.3,"h":36.7},{"kind":"ho_rl_5_03","x":190,"y":340,"w":17.5,"h":30.8},{"kind":"ho_modern_curtain_plan_and_elevations","x":620.5,"y":288.9,"w":37.8,"h":220,"rot":90},{"kind":"ho_modern_curtain_plan_and_elevations","x":130,"y":61.4,"w":23.6,"h":137.2,"rot":90},{"kind":"ho_ep_258","x":74.8,"y":304.6,"w":109.1,"h":95.7,"rot":90,"fy":true},{"kind":"ho_caprani_floor_lamp","x":75.8,"y":200.6,"w":35.1,"h":30}];
+const SV2_DATA=[{"kind":"rect","x":69.8,"y":58.1,"w":219.9,"h":138.5,"fill":"#BDCBCB","tex":"tl"},{"kind":"rect","x":69.8,"y":192.6,"w":219.9,"h":211.7,"fill":"#86705A","tex":"wf"},{"kind":"rect","x":283.7,"y":58.1,"w":249.7,"h":346.2,"fill":"#7F5F4C","tex":"wf"},{"kind":"rect","x":69.8,"y":400.3,"w":219.9,"h":103.3,"fill":"#97968D","tex":"cn"},{"kind":"rect","x":195.7,"y":497.6,"w":86.8,"h":76.1,"fill":"#7E6552","tex":"wf"},{"kind":"rect","x":283.7,"y":400.3,"w":249.7,"h":173.4,"fill":"#8A7058","tex":"wf"},{"kind":"wall","x":69.8,"y":192.6,"w":213.9,"h":8},{"kind":"wall","x":69.8,"y":400.3,"w":54.6,"h":8},{"kind":"wall","x":236,"y":400.3,"w":46.5,"h":8},{"kind":"dash","x":124.4,"y":400.3,"w":111.6,"h":8},{"kind":"wall","x":283.7,"y":254.6,"w":12,"h":244.9},{"kind":"wall","x":283.7,"y":400.3,"w":11.2,"h":8},{"kind":"wall","x":358.9,"y":400.3,"w":170.5,"h":8},{"kind":"doorR","x":242.8,"y":149.2,"w":40.9,"h":40.9,"rot":270},{"kind":"door","x":240.3,"y":211.2,"w":43.4,"h":43.4,"rot":270},{"kind":"door","x":291.7,"y":499.5,"w":55.8,"h":55.8,"rot":90},{"kind":"doorR","x":294.9,"y":408.3,"w":62,"h":62,"rot":180},{"kind":"ho_ep_156","x":79.8,"y":70,"w":55,"h":117.8,"fill":"#f0f5f3"},{"kind":"ho_flush_valve_toilet","x":260.4,"y":68.1,"w":23.3,"h":46.4,"rot":0},{"kind":"labelA","x":180,"y":110,"w":32,"h":18,"text":"욕실"},{"kind":"labelA","x":170,"y":270,"w":32,"h":18,"text":"큰방"},{"kind":"labelA","x":155.4,"y":443.6,"w":40,"h":18,"text":"발코니"},{"kind":"ho_rl_5_01","x":420,"y":450,"w":24.8,"h":22.4},{"kind":"labelA","x":243,"y":530,"w":32,"h":18,"text":"옷장"},{"kind":"labelA","x":328,"y":140,"w":30,"h":18,"text":"계단"},{"kind":"ho_2_modern_tv_units_2","x":424.1,"y":164.7,"w":20.7,"h":86.8,"rot":90,"fill":"#6E4A38","tex":"wg1"},{"kind":"ho_old_tv","x":422,"y":199.3,"w":24.8,"h":17.7,"rot":90,"fill":"#5E5F58"},{"kind":"ho_ep_219","x":394.7,"y":276.8,"w":54.6,"h":52.4,"rot":180,"fill":"#788675"},{"kind":"ho_ep_p297b","x":490,"y":60.5,"w":29,"h":37.2},{"kind":"labelA","x":378.6,"y":229.7,"w":28,"h":18,"text":"홀"},{"kind":"ho_ep_291","x":414.7,"y":510,"w":114.7,"h":57.6,"rot":90,"fill":"#8a8a8a","sub":"#E3DACB"},{"kind":"labelA","x":353.8,"y":477.7,"w":28,"h":18,"text":"방"},{"kind":"ho_openable_wardrobe_1","x":221.2,"y":289.7,"w":70.3,"h":117.8,"rot":90,"fill":"#aca095","tex":"wg1"},{"kind":"ho_traditional_dresser","x":203.7,"y":505.6,"w":41.7,"h":65.7,"fy":true,"rot":90,"fill":"#aca095","tex":"wg2"},{"kind":"ho_bookcase_with_library_ladder","x":368.1,"y":257.1,"w":170.3,"h":153.2,"rot":180,"fill":"#aca095","tex":"wg1"},{"kind":"ho_half_pedestal_wash_basin","x":150,"y":151.7,"w":55,"h":43.9,"rot":180},{"kind":"ho_towel_holder","x":200,"y":178.8,"w":60,"h":20.8},{"kind":"ho_openable_wardrobe_1","x":420.6,"y":403.3,"w":117.8,"h":70.3,"rot":0,"fill":"#aca095","tex":"wg1"},{"kind":"ho_mid_century_desk_with_chair","x":105,"y":196.6,"w":75,"h":73.6},{"kind":"ho_rl_5_02","x":198.7,"y":363.6,"w":40.3,"h":36.7},{"kind":"ho_rl_5_03","x":190,"y":340,"w":17.5,"h":30.8},{"kind":"ho_modern_curtain_plan_and_elevations","x":620.5,"y":288.9,"w":37.8,"h":220,"rot":90},{"kind":"ho_modern_curtain_plan_and_elevations","x":130,"y":61.4,"w":23.6,"h":137.2,"rot":90},{"kind":"ho_ep_258","x":74.8,"y":304.6,"w":109.1,"h":95.7,"rot":90,"fy":true},{"kind":"ho_caprani_floor_lamp","x":75.8,"y":200.6,"w":35.1,"h":30},{"kind":"ho_wood_stair_straight","x":285.9,"y":62,"w":168.8,"h":62.7,"rot":180,"fill":"#9A7A63"},{"kind":"wpath","x":279.7,"y":555.5,"w":8,"h":22.2,"pts":[[0.5,0.18010240455876422],[0.5,0.8198975954412357]],"cl":false},{"kind":"wpath","x":65.8,"y":54.1,"w":471.6,"h":523.6,"pts":[[0.2754452926208651,0.8470206264323911],[0.2754452926208651,0.9923605805958747],[0.991518235793045,0.9923605805958747],[0.991518235793045,0.007639419404125286],[0.008481764206955048,0.007639419404125286],[0.008481764206955077,0.858479755538579],[0.2754452926208651,0.858479755538579],[0.2754452926208651,0.8851941442827904]],"cl":false},{"kind":"wpath","x":273.7,"y":54.1,"w":14,"h":96.9,"pts":[[0.7149760233696558,0.9587116709041104],[0.7149760233696558,0.04128832909588967],[0.2850239766303441,0.04128832909588967]],"cl":false},{"kind":"wpath","x":279.7,"y":186.7,"w":8,"h":27.1,"pts":[[0.5,0.14747629121718278],[0.5,0.8525237087828172]],"cl":false}];
 const SV2=()=>SV2_DATA.map(i=>({id:gid(),...JSON.parse(JSON.stringify(i)),dw:i.w,dh:i.h}));
-const SV3=()=>{const P=PAL_SV,{WH,WV,fl,sh,hx,lb,stairs}=SVH(840,695),L=[];
- L.push(FLR(0,0,330,290,null,"#DAD7CC"),fl(858,712,1330,1115,"wf","#8A7660"));
- L.push(...WH(858,1330,712,[],12),...WH(858,1330,1115,[],12),...WV(712,1115,858,[],12),...WV(712,1115,1330,[],12));
- L.push(...stairs(1060,718,1315,795,0,15,"#8A6A55","#9A7A63"),lb("계단",1150,745,30),
-  hx("ho_ep_062",905,772,0,80,{fill:P.OLV}),sh("rect",965,850,1010,905,"#A38A65"),hx("ho_ep_062",935,1030,90,85,{fill:P.TEAL}),sh("rect",988,1051,1038,1089,"#A38A65"),sh("rect",1126,1002,1184,1088,"#8A7357"),hx("ho_ep_062",1212,1017,270,80,{fill:P.OLV}),
-  sh("rect",1217,910,1288,984,"#A38A65"),sh("rect",1142,820,1196,856,"#A38A65"),sh("rect",1256,806,1310,864,"#8A7357"),hx("ho_ep_095",1210,892,0,30,{fill:P.RUST}),hx("ho_ep_p297a",1295,1018,0,36),lb("다락방",1020,935,40));
- return L.filter(Boolean)};
-const PRESETS=[{id:"soviet-house-1f",set:"soviet",fl:1,name:"소련 Типовая 주택 · 1층",desc:"서재·식당·거실, 주방, 욕실, 계단, 현관과 발코니 (손그림 기준)",build:SV1,raw:true,size:[660,690]},{id:"soviet-house-2f",set:"soviet",fl:2,name:"소련 Типовая 주택 · 2층",desc:"큰방, 욕실, 홀, 방, 옷장, 발코니와 계단 (손그림 기준)",build:SV2,raw:true,size:[620,660]},{id:"soviet-house-3f",set:"soviet",fl:3,name:"소련 Типовая 주택 · 3층(다락)",desc:"계단 위 다락방 (손그림 기준)",build:SV3,size:[330,290]},{id:"american-suburban-1990s",name:"1990s 미국 교외 단독주택",desc:"현관·거실·식당·가족실·침실 3, 차고가 있는 단층 교외 주택 (주택 약 87㎡ + 차고 약 17㎡, 1px=1cm)",size:[1700,1020],build:()=>REAL(P9,{k:1/.65,W:1700,H:1020,ox:60,oy:40})},
+const SV3_DATA=[{"kind":"rect","x":0,"y":0,"w":430,"h":390,"fill":"#DAD7CC"},{"kind":"rect","x":61.2,"y":60.5,"w":298.6,"h":255.9,"fill":"#8A7660","tex":"wf"},{"kind":"labelA","x":242.2,"y":84,"w":30,"h":18,"text":"계단"},{"kind":"rect","x":127.5,"y":146.1,"w":27.9,"h":34.1,"fill":"#A38A65"},{"kind":"ho_ep_062","x":84.5,"y":231.4,"w":48.8,"h":52.7,"rot":90,"fill":"#4F7773"},{"kind":"rect","x":141.8,"y":270.7,"w":31,"h":23.6,"fill":"#A38A65"},{"kind":"rect","x":227.3,"y":240.3,"w":36,"h":53.3,"fill":"#8A7357"},{"kind":"ho_ep_062","x":257.6,"y":224.8,"w":45.9,"h":49.6,"rot":270,"fill":"#788675"},{"kind":"rect","x":283.7,"y":183.3,"w":44,"h":45.9,"fill":"#A38A65"},{"kind":"rect","x":237.2,"y":127.5,"w":33.5,"h":22.3,"fill":"#A38A65"},{"kind":"rect","x":307.9,"y":118.8,"w":33.5,"h":36,"fill":"#8A7357"},{"kind":"ho_ep_095","x":270.1,"y":162.8,"w":18.6,"h":18.6,"fill":"#9A5745"},{"kind":"ho_ep_p297a","x":320.9,"y":240.6,"w":22.3,"h":19.3},{"kind":"labelA","x":161.6,"y":201.8,"w":40,"h":18,"text":"다락방"},{"kind":"wpath","x":57.2,"y":56.5,"w":306.6,"h":263.9,"pts":[[0.025284411461584562,0.015157256536566882],[0.9869536855838222,0.015157256536566882],[0.9869536855838226,0.9848427434634331],[0.013046314416177754,0.9848427434634331],[0.01304631441617743,0.015157256536566882]],"cl":true},{"kind":"ho_wood_stair_straight","x":65.2,"y":64.5,"w":168.8,"h":62.7,"rot":180,"fill":"#9A7A63"}];
+const SV3=()=>SV3_DATA.map(i=>({id:gid(),...JSON.parse(JSON.stringify(i)),dw:i.w,dh:i.h}));
+const PRESETS=[{id:"soviet-house-1f",set:"soviet",fl:1,name:"소련 Типовая 주택 · 1층",desc:"서재·식당·거실, 주방, 욕실, 계단, 현관과 발코니 (손그림 기준)",build:SV1,raw:true,size:[660,690]},{id:"soviet-house-2f",set:"soviet",fl:2,name:"소련 Типовая 주택 · 2층",desc:"큰방, 욕실, 홀, 방, 옷장, 발코니와 계단 (손그림 기준)",build:SV2,raw:true,size:[620,660]},{id:"soviet-house-3f",set:"soviet",fl:3,name:"소련 Типовая 주택 · 3층(다락)",desc:"계단 위 다락방 (손그림 기준)",build:SV3,raw:true,size:[430,390]},{id:"american-suburban-1990s",name:"1990s 미국 교외 단독주택",desc:"현관·거실·식당·가족실·침실 3, 차고가 있는 단층 교외 주택 (주택 약 87㎡ + 차고 약 17㎡, 1px=1cm)",size:[1700,1020],build:()=>REAL(P9,{k:1/.65,W:1700,H:1020,ox:60,oy:40})},
  {id:"japanese-rural-wooden-house",name:"일본 시골 목조 주택 (민가)",desc:"도마·현관·다다미방·마루방·침실·툇마루·소형 욕실의 목조 민가",build:P3,pal:PAL_JP},
  {id:"modern-family-apartment",name:"현대 4인 가족 아파트",desc:"침실 3개, 거실·주방·식당, 욕실, 세탁실, 발코니 2개 (발코니 포함 약 81㎡, 1px=1cm)",size:[1400,860],build:()=>REAL(P4,{k:1.27,m:1/1.27,W:1400,H:860,ox:65,oy:49}),pal:PAL_FM},
  {id:"modern-studio-apartment",name:"현대 원룸 아파트",desc:"일렬 주방, 침대·휴식·작업 코너가 한 공간, 붙박이 옷장, 발코니 (발코니 포함 약 35㎡, 1px=1cm)",size:[1100,720],build:()=>REAL(P5,{k:1.12,m:1/1.12,W:1100,H:720,ox:-10,oy:-10}),pal:PAL_ST},
@@ -2703,6 +2773,8 @@ const fitFloors=L=>{L=L.filter(i=>!(i&&i._b));const W=L.filter(i=>i&&(i.kind==="
  return L};
 const PADM=50; /* 프리셋 도면 둘레 여백(px) */
 PRESETS.forEach(p=>{if(p.raw)return;const b=p.build,z=p.size||[1000,600];p.size=[z[0]+2*PADM,z[1]+2*PADM];p.build=()=>{const L=fitFloors(b());L.forEach(i=>{if(!i)return;if(i.kind==="rect"&&i.x<=1&&i.y<=1&&i.w>=z[0]-2&&i.h>=z[1]-2){i.x=0;i.y=0;i.w=z[0]+2*PADM;i.h=z[1]+2*PADM;i.dw=i.w;i.dh=i.h}else{i.x+=PADM;i.y+=PADM}});return L}});
+/* 캔버스 전체를 덮는 바닥 사각형은 모든 프리셋에서 제외 */
+PRESETS.forEach(p=>{const b=p.build,z=p.size||[1000,600];p.build=()=>b().filter(i=>!(i&&i.kind==="rect"&&i.x<=2&&i.y<=2&&i.w>=z[0]*.9&&i.h>=z[1]*.9))});
 const presetItems=i=>PRESETS[i].build();
 $("#hLoad").onclick=()=>{
   const px=isPx();
